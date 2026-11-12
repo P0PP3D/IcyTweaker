@@ -37,15 +37,21 @@ jobs:
           PUBLISH: always
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      # electron-builder once finished "successfully" with only the .blockmap uploaded (v0.1.5). Fail loudly instead.
-      - name: Check the release has all three files
+      # electron-builder has finished "successfully" with files missing from the release (the .blockmap on every
+      # release so far, the installer once). Upload whatever is missing from release/, then insist all three are there.
+      - name: Make sure the release has all three files
         shell: bash
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           v="${GITHUB_REF_NAME#v}"
-          names=$(gh release view "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --json assets --jq '.assets[].name')
-          echo "$names"
-          for f in "IcyTweaker-Setup-$v.exe" "IcyTweaker-Setup-$v.exe.blockmap" latest.yml; do
-            echo "$names" | grep -qxF "$f" || { echo "::error::Release is missing $f"; exit 1; }
+          files=("IcyTweaker-Setup-$v.exe" "IcyTweaker-Setup-$v.exe.blockmap" "latest.yml")
+          have() { gh release view "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --json assets --jq '.assets[].name' | grep -qxF "$1"; }
+          for f in "${files[@]}"; do
+            if ! have "$f"; then
+              echo "Uploading missing $f"
+              gh release upload "$GITHUB_REF_NAME" "release/$f" --repo "$GITHUB_REPOSITORY" --clobber
+            fi
           done
+          for f in "${files[@]}"; do have "$f" || { echo "::error::Release is still missing $f"; exit 1; }; done
+          echo "All three files are on the release."
