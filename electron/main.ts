@@ -240,7 +240,7 @@ app.whenReady().then(async () => {
       onboarded: saved.onboarded === true,
       windowsBuild: (typeof saved.windowsBuild === 'string' ? saved.windowsBuild : null) as string | null,
       boost: { ...DEFAULT_BOOST, ...(saved.boost as Partial<BoostSettings> | undefined) },
-      app: { tray: true, notify: true, startWithWindows: false, weeklyClean: false, lastCleanAt: null, deviceType: 'auto', laptopProfile: false, overlayWithBoost: false, hotkeys: false, theme: 'dark', accent: 'blue', ...savedApp } as AppSettings,
+      app: { tray: true, notify: true, startWithWindows: false, weeklyClean: false, lastCleanAt: null, deviceType: 'auto', laptopProfile: false, overlayWithBoost: false, hotkeys: false, autoUpdate: true, theme: 'dark', accent: 'blue', ...savedApp } as AppSettings,
     };
     const saveSettings = () => writeFile(settingsFile, JSON.stringify(settings, null, 2));
 
@@ -509,22 +509,31 @@ app.whenReady().then(async () => {
     const pkg = JSON.parse(readFileSync(path.join(app.getAppPath(), 'package.json'), 'utf8')) as { version: string; updateRepo?: string };
     let updateUrl: string | null = null;
     // Auto-update (installed builds with a release repository): GitHub releases through electron-updater.
-    // Nothing downloads or installs without the user pressing the button. The installer is not code-signed yet,
-    // so updates are trusted through HTTPS from the project's own GitHub releases; once signed, set
-    // build.win.publisherName so electron-updater also checks the update's signature.
+    // With Settings > Automatic updates on (default), it checks 30 s after start and every 6 h, downloads in the
+    // background and installs when IcyCleaner quits (or at "Restart and install"). Off = only the Settings buttons.
+    // The installer is not code-signed yet, so updates are trusted through HTTPS from the project's own GitHub
+    // releases; once signed, set build.win.publisherName so electron-updater also checks the update's signature.
     const [repoOwner, repoName] = (pkg.updateRepo ?? '').split('/');
     const canAutoUpdate = app.isPackaged && !!repoOwner && !!repoName;
     let updateDownloaded = false;
+    const applyAutoUpdate = () => {
+      autoUpdater.autoDownload = settings.app.autoUpdate;
+      autoUpdater.autoInstallOnAppQuit = settings.app.autoUpdate;
+    };
     if (canAutoUpdate) {
       autoUpdater.setFeedURL({ provider: 'github', owner: repoOwner, repo: repoName });
-      autoUpdater.autoDownload = false;
-      autoUpdater.autoInstallOnAppQuit = false;
+      applyAutoUpdate();
       autoUpdater.on('download-progress', (p) => progress({ task: 'update', done: p.transferred, total: p.total, current: 'IcyCleaner update' }));
-      autoUpdater.on('update-downloaded', () => {
+      autoUpdater.on('update-downloaded', (info) => {
+        if (!updateDownloaded) notify(`IcyCleaner ${info.version} downloaded`, 'It installs when you quit IcyCleaner, or restart now from Settings > Updates.');
         updateDownloaded = true;
         progress({ task: 'update', done: 1, total: 1, current: '' });
-        notify('Update ready', 'Restart IcyCleaner from Settings to install it.');
       });
+      const autoCheck = () => {
+        if (settings.app.autoUpdate && !updateDownloaded) void autoUpdater.checkForUpdates().catch(() => {});
+      };
+      setTimeout(autoCheck, 30_000);
+      setInterval(autoCheck, 6 * 3_600_000);
     }
 
     const api: InvokeApi = {
@@ -1191,6 +1200,7 @@ app.whenReady().then(async () => {
             overlayWithBoost: n.overlayWithBoost!,
             // Newer settings: kept as they were when an older page leaves them out.
             hotkeys: typeof n.hotkeys === 'boolean' ? n.hotkeys : settings.app.hotkeys,
+            autoUpdate: typeof n.autoUpdate === 'boolean' ? n.autoUpdate : settings.app.autoUpdate,
             theme: n.theme === 'light' || n.theme === 'dark' ? n.theme : settings.app.theme,
             accent: ACCENTS.includes(n.accent as Accent) ? n.accent! : settings.app.accent,
           },
@@ -1198,6 +1208,7 @@ app.whenReady().then(async () => {
         engineHw.laptop = deviceType() === 'laptop';
         await saveSettings();
         registerHotkeys();
+        if (canAutoUpdate) applyAutoUpdate();
         await applyPowerSource().catch(() => {});
         await safety.log('settings', 'app', true, JSON.stringify(settings.app));
         return settings.app;

@@ -455,6 +455,8 @@ export interface AppSettings {
   overlayWithBoost: boolean;
   /** Global hotkeys: Ctrl+Shift+O overlay, Ctrl+Shift+B Game Boost. */
   hotkeys: boolean;
+  /** Check, download and install updates (on quit) by itself. Installed app with a release repository only. */
+  autoUpdate: boolean;
   theme: 'dark' | 'light';
   accent: Accent;
 }

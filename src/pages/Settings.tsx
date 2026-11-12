@@ -12,7 +12,8 @@ function Switch({ on, label, onChange, disabled }: { on: boolean; label: string;
   );
 }
 
-const ROWS: Array<{ key: 'tray' | 'notify' | 'startWithWindows' | 'weeklyClean' | 'overlayWithBoost' | 'hotkeys'; name: string; description: string }> = [
+const ROWS: Array<{ key: 'tray' | 'notify' | 'startWithWindows' | 'weeklyClean' | 'overlayWithBoost' | 'hotkeys' | 'autoUpdate'; name: string; description: string }> = [
+  { key: 'autoUpdate', name: 'Automatic updates', description: 'Check GitHub for a new version every few hours, download it in the background and install it when you quit IcyCleaner. Off: only when you press the buttons under Updates.' },
   { key: 'tray', name: 'Keep running in the tray', description: 'Closing the window keeps IcyCleaner in the system tray, so Game Boost and scheduled cleaning keep working. Quit from the tray icon.' },
   { key: 'notify', name: 'Notifications', description: 'Tell me when Game Boost starts and ends, and when the weekly Health Check has run.' },
   { key: 'startWithWindows', name: 'Start with Windows', description: 'Start IcyCleaner in the tray when you sign in (as administrator, through a scheduled task, without a prompt).' },

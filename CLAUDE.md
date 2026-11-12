@@ -5,7 +5,7 @@ Full spec: `docs/SPEC.md`. Work one phase of its "Build order" at a time.
 
 ## Hard rules
 
-1. **Every tweak needs a working revert** and an **apply → detect applied → revert → detect original restored** test
+1. **Every tweak needs a working revert** and an **apply â†’ detect applied â†’ revert â†’ detect original restored** test
    in `electron/tweaks.test.ts` (fake registry via `memoryAdapter()`), including the case where the value was absent before.
 2. **Restore point before every bulk change** (Apply All, Revert All, Undo All, presets, anything touching many items).
    If the restore point fails, change nothing.
@@ -128,7 +128,7 @@ Full spec: `docs/SPEC.md`. Work one phase of its "Build order" at a time.
 - Auto-update: `electron-updater` (a real dependency, external in vite.electron.config.mts, packed by
   electron-builder). Active only in installed builds with package.json `updateRepo` = "owner/name";
   `scripts/dist.mjs` adds the GitHub publish config so release/latest.yml is produced (upload it with the
-  installer + .blockmap). Never auto-downloads or auto-installs.
+  installer + .blockmap). Settings "Automatic updates" (default on): checks 30 s after start and every 6 h, downloads in the background, installs on quit. Off = Settings buttons only.
 - Installed builds always run as administrator (`build.win.requestedExecutionLevel: requireAdministrator`, a UAC
   prompt at each start). Windows won't start such an app from Run/RunOnce, so "Start with Windows" and the driver
   job's resume use elevated sign-in scheduled tasks (`system/tasks.ts`, `\IcyCleaner\Start`, `\IcyCleaner\DriverJob`).
