@@ -1685,7 +1685,7 @@ app.whenReady().then(async () => {
         });
         if (response === 2) return { ok: false, message: 'Restart cancelled.' };
         if (response === 0) {
-          const rp = await engine.createRestorePoint();
+          const rp = await engine.createRestorePoint('Before restart');
           if (!rp.ok) return { ok: false, message: `${rp.message} Windows was not restarted.` };
         }
         try {

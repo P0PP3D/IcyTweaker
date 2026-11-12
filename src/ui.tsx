@@ -41,6 +41,7 @@ export function Button({
 }) {
   return (
     <button
+      type="button" // never submits a surrounding form (its onClick does the work)
       onClick={onClick}
       disabled={disabled}
       className={clsx(
@@ -135,6 +136,11 @@ export function TweakRow({
           )}
           <WarningChip text={t.warning} />
           {t.changedAt && <span className="text-xs text-slate-500">changed {new Date(t.changedAt).toLocaleDateString()}</span>}
+          {!t.changedAt && t.status === 'applied' && (
+            <span className="text-xs text-slate-500" title="IcyTweaker didn't change this: it was already set (Windows' default or another tool).">
+              already set
+            </span>
+          )}
         </div>
         {(t.unfit || t.anticheatWarning) && <p className="mt-1 text-xs text-orange-200/90">{[t.unfit, t.anticheatWarning].filter(Boolean).join(' ')}</p>}
         <p className="mt-1 text-sm text-slate-400">{t.description}</p>
@@ -242,6 +248,11 @@ export function TweakCard({
           <div className="min-w-0 text-xs">
             <div className={clsx(on ? 'text-sky-300' : t.status === 'partial' ? 'text-amber-300' : 'text-slate-500')}>{STATUS_TEXT[t.status]}</div>
             {t.changedAt && <div className="text-slate-600">changed {new Date(t.changedAt).toLocaleDateString()}</div>}
+            {!t.changedAt && t.status === 'applied' && (
+              <div className="text-slate-600" title="IcyTweaker didn't change this: it was already set (Windows' default or another tool).">
+                already set
+              </div>
+            )}
           </div>
           {t.options ? (
             <div className="flex flex-col items-end gap-1.5">

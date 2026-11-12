@@ -78,5 +78,6 @@ export const SHORTCUTS: Array<ShortcutView & { open: { exe: string; args?: strin
   { id: 'bitlocker', name: 'BitLocker settings', description: 'Drive encryption and recovery keys.', requiresAdmin: false, restarts: false, open: { exe: path.join(SYSTEM32, 'control.exe'), args: ['/name', 'Microsoft.BitLockerDriveEncryption'] } },
   { id: 'msconfig', name: 'System Configuration', description: 'Boot options and safe mode (msconfig).', requiresAdmin: true, restarts: false, open: { exe: path.join(SYSTEM32, 'msconfig.exe') } },
   { id: 'display', name: 'Advanced display settings', description: 'Refresh rate and display mode for each monitor.', requiresAdmin: false, restarts: false, open: { url: 'ms-settings:display-advanced' } },
+  { id: 'recycle-bin', name: 'Recycle Bin', description: 'Opens the Recycle Bin, to look through or restore deleted files.', requiresAdmin: false, restarts: false, open: { exe: path.join(path.dirname(SYSTEM32), 'explorer.exe'), args: ['shell:RecycleBinFolder'] } },
   { id: 'msinfo32', name: 'System Information', description: 'Full hardware and software summary (msinfo32).', requiresAdmin: false, restarts: false, open: { exe: path.join(SYSTEM32, 'msinfo32.exe') } },
 ];

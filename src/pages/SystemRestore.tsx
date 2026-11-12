@@ -9,6 +9,7 @@ const when = (iso: string) => new Date(iso).toLocaleString();
 export function SystemRestore({ busy, act }: { busy: boolean; act: Act }) {
   const [points, setPoints] = useState<{ points: RestorePointView[]; error?: string } | null>(null);
   const [history, setHistory] = useState<{ log: LogEntry[]; changes: BackupView[] } | null>(null);
+  const [name, setName] = useState('');
 
   const load = useCallback(async () => {
     const [p, h] = await Promise.all([window.api.listRestorePoints(), window.api.getHistory()]);
@@ -33,11 +34,30 @@ export function SystemRestore({ busy, act }: { busy: boolean; act: Act }) {
           <Button disabled={busy} onClick={() => run(() => window.api.openSystemRestore())}>
             Roll back…
           </Button>
-          <Button primary disabled={busy} onClick={() => run(() => window.api.createRestorePoint())}>
-            Create restore point
-          </Button>
         </div>
       </div>
+
+      <form
+        className="flex flex-wrap items-end gap-2 rounded-xl border border-[var(--line)] bg-[var(--card)] px-4 py-3"
+        onSubmit={(e) => {
+          e.preventDefault();
+          void run(() => window.api.createRestorePoint(name)).then(() => setName(''));
+        }}
+      >
+        <label className="flex min-w-[16rem] flex-1 flex-col gap-1 text-sm text-slate-300">
+          New restore point
+          <input
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            maxLength={60}
+            placeholder="Name it, e.g. Before driver update"
+            className="rounded-md bg-white/5 px-3 py-1.5 text-sm text-slate-100 ring-1 ring-white/10 placeholder:text-slate-500 focus:outline-none focus:ring-sky-500/50"
+          />
+        </label>
+        <Button primary disabled={busy} onClick={() => void run(() => window.api.createRestorePoint(name)).then(() => setName(''))}>
+          Create restore point
+        </Button>
+      </form>
 
       <div className="space-y-2">
         <h3 className="text-sm font-semibold uppercase tracking-wide text-slate-400">Restore points</h3>

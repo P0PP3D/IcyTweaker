@@ -523,7 +523,14 @@ export const generalTweaks: Tweak[] = [
   ),
 
   regTweak(
-    meta({ id: 'animations-off', name: 'Animations Off', category: 'graphics', description: 'Turns off window minimize/maximize and taskbar animations.', requiresAdmin: false, requiresReboot: true }),
+    meta({
+      id: 'animations-off',
+      name: 'Window & Taskbar Animations Off',
+      category: 'graphics',
+      description: 'Turns off only the minimize/maximize and taskbar animations. "Visual Effects for Performance" turns off the rest (fades, menu and app animations).',
+      requiresAdmin: false,
+      requiresReboot: true,
+    }),
     [
       { hive: 'HKCU', key: 'Control Panel\\Desktop\\WindowMetrics', name: 'MinAnimate', on: sz('0'), off: sz('1') },
       { hive: 'HKCU', key: 'Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\Advanced', name: 'TaskbarAnimations', on: dword(0), off: dword(1) },

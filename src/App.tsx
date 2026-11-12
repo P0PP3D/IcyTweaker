@@ -457,7 +457,6 @@ export function App() {
             )}
             </div>
 
-            <p className="truncate pt-2 text-xs text-slate-600">Backup and log: {state.dataDir}</p>
           </div>
         </main>
       </div>

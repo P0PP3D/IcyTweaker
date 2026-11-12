@@ -709,7 +709,8 @@ export interface OptimizerApi {
   undoAll(): Promise<ActionReport>;
   relaunchAsAdmin(): Promise<ActionReport>;
   applyPreset(id: string): Promise<ActionReport>;
-  createRestorePoint(): Promise<ActionReport>;
+  /** name: optional label shown in Windows System Restore ("IcyTweaker: <name>"). */
+  createRestorePoint(name?: string): Promise<ActionReport>;
   /** Asks for confirmation in a native dialog, then restarts Windows. */
   restart(): Promise<ActionReport>;
   completeOnboarding(): Promise<void>;

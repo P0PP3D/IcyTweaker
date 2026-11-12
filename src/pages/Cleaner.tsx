@@ -283,6 +283,9 @@ export function RecycleBin({ busy, act, ask }: { busy: boolean; act: Act; ask: A
           <Button disabled={busy} onClick={() => void load()}>
             Refresh
           </Button>
+          <Button disabled={busy} onClick={() => void window.api.openShortcut('recycle-bin').then(() => undefined)}>
+            Open Recycle Bin
+          </Button>
           <Button danger disabled={busy || !scan || empty} onClick={() => void emptyBin()}>
             Empty Recycle Bin
           </Button>

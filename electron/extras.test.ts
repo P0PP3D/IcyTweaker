@@ -15,6 +15,7 @@ import { memoryAdapter } from './system/adapter';
 import { buildConfig, fromShareCode, parseConfig, toShareCode } from './system/configfile';
 import { validMode } from './system/monitors';
 import { createSafety } from './system/safety';
+import { createEngine, tweak } from './tweaks/engine';
 import type { TweakView } from '../shared/types';
 
 const TMP = path.join(process.cwd(), '.test-tmp', 'extras');
@@ -129,6 +130,34 @@ describe('library and startup impact', () => {
   it('boot info keeps the slow app\'s file name (to match startup entries)', () => {
     const b = parseBoot(JSON.stringify({ lastBoot: 'x', boots: [], slow: [{ name: 'Microsoft OneDrive', file: 'OneDrive.exe', total: 5000, degradation: 2300 }], error: null }), true);
     expect(b.slowApps).toEqual([{ name: 'Microsoft OneDrive', degradationMs: 2300, file: 'OneDrive.exe' }]);
+  });
+});
+
+describe('toggle status honesty', () => {
+  it('a setting already at its Windows default ("on" = "off") does not make a group look partial', async () => {
+    const fake = memoryAdapter();
+    const svc = (name: string) => ({ kind: 'service' as const, name });
+    await fake.write(svc('RemoteRegistry'), 'disabled');
+    await fake.write(svc('TermService'), 'demand');
+    const safety = await createSafety(fake, dir());
+    const t = tweak({ id: 'g', name: 'G', category: 'services', description: '', risk: 'safe' } as never, [
+      { ref: svc('RemoteRegistry'), on: 'disabled', off: 'disabled' },
+      { ref: svc('TermService'), on: 'disabled', off: 'demand' },
+    ]);
+    expect(await t.readState(safety)).toBe('not_applied');
+    await t.apply(safety);
+    expect(await t.readState(safety)).toBe('applied');
+  });
+  it('turning off something IcyTweaker never changed (no default to go back to) says so', async () => {
+    const fake = memoryAdapter();
+    const ref = { kind: 'tcpGlobal' as const, name: 'rss' as const };
+    await fake.write(ref, 'enabled');
+    const safety = await createSafety(fake, dir());
+    const t = tweak({ id: 'tcp', name: 'TCP', category: 'network', description: '', risk: 'safe', builds: { min: 0 } } as never, [{ ref, on: 'enabled', off: null }]);
+    const engine = createEngine({ tweaks: [t], presets: [], fixes: [], safety, live: false, isAdmin: true, build: 26200, hardware: { laptop: false, ssd: true }, antiCheats: [] });
+    const r = await engine.setTweak('tcp', false);
+    expect(r.ok).toBe(false);
+    expect(r.message).toMatch(/already set this way before IcyTweaker/);
   });
 });
 

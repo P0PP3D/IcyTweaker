@@ -46,7 +46,10 @@ export function tweak(meta: TweakMeta, settings: Setting[]): Tweak {
     settings,
     async readState(ctx) {
       const cur = await Promise.all(settings.map((s) => ctx.read(s.ref)));
-      const hits = settings.flatMap((s, i) => (cur[i] === null && !creatable(s.ref) ? [] : [isOn(s, cur[i])]));
+      // Skipped: settings that don't exist and can't be created, and settings whose "on" is also Windows' default
+      // ("off"), e.g. Remote Registry, disabled out of the box. Those read the same either way, so they made
+      // untouched groups show as "partial".
+      const hits = settings.flatMap((s, i) => ((cur[i] === null && !creatable(s.ref)) || (!options && !s.matches && s.off !== undefined && sameValue(s.on, s.off)) ? [] : [isOn(s, cur[i])]));
       if (hits.length === 0) return 'unavailable';
       return hits.every(Boolean) ? 'applied' : hits.some(Boolean) ? 'partial' : 'not_applied';
     },
@@ -289,7 +292,15 @@ export function createEngine(o: {
         return Promise.resolve({ ok: false, message: `${t.name} is Risky and needs confirmation.` });
       const body = async (): Promise<ActionReport> => {
         const e = await run(t, on ? 'apply' : 'revert', option as number | undefined);
-        return e ? { ok: false, message: `${t.name}: ${e}` } : { ok: true, message: `${t.name} ${on ? 'applied' : 'reverted'}${dryNote}.` };
+        if (e) return { ok: false, message: `${t.name}: ${e}` };
+        // Turned off but still on: the app never changed it (no backup) and the setting has no safe default to fall
+        // back to (power, adapter, TCP values). Say so instead of a switch that silently flips back.
+        if (!on && (await status(t)) === 'applied')
+          return {
+            ok: false,
+            message: `${t.name} was already set this way before IcyTweaker (Windows' default or another tool), so there is no earlier value to go back to. Nothing was changed.`,
+          };
+        return { ok: true, message: `${t.name} ${on ? 'applied' : 'reverted'}${dryNote}.` };
       };
       // Single changes don't make a restore point (owner's decision): the backup undoes them, and Restart now offers one.
       return mutate(body);
@@ -330,10 +341,12 @@ export function createEngine(o: {
       );
     },
 
-    createRestorePoint: () =>
+    /** name: the user's own label (optional). Control characters dropped, 60 characters at most. */
+    createRestorePoint: (name?: unknown) =>
       mutate(async () => {
+        const label = typeof name === 'string' ? name.replace(/[\x00-\x1f\x7f]/g, ' ').trim().slice(0, 60) : '';
         try {
-          await safety.restorePoint('IcyTweaker: Manual restore point', true); // asked for: always call Windows
+          await safety.restorePoint(`IcyTweaker: ${label || 'Manual restore point'}`, true); // asked for: always call Windows
           return { ok: true, message: o.live ? 'Restore point created.' : 'Restore point skipped (dry-run).' };
         } catch (err) {
           return { ok: false, message: `Restore point failed: ${errText(err)}` };

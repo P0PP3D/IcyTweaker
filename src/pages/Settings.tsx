@@ -207,6 +207,9 @@ export function Settings({ state, busy, act, ask }: { state: AppState; busy: boo
           <p className="text-sm text-slate-400">
             {state.live ? 'Changes are written to Windows. Every original value is backed up first.' : 'Changes are only simulated; nothing is written to Windows.'} {state.backupCount} setting(s) changed so far.
           </p>
+          <p className="truncate text-xs text-slate-500" title={state.dataDir}>
+            Backup and log: {state.dataDir}
+          </p>
         </div>
         <Button danger disabled={busy || state.backupCount === 0} onClick={() => act(() => window.api.undoAll())}>
           <Icon name="undo" className="h-4 w-4" />

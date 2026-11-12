@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import type { DuplicateGroup, OldFile, PrivacySnapshot, PrivacyTraceView, Progress } from '../../shared/types';
+import { Icon } from '../icons';
 import { Button, FeatureCard, formatBytes, type Ask } from '../ui';
 import type { Act } from './General';
 
@@ -107,6 +108,27 @@ export function Duplicates({ busy, act, ask }: { busy: boolean; act: Act; ask: A
   );
 }
 
+/**
+ * Old files grouped by the folder they're in. Groups are in folder-path order, so a folder's subfolders follow it
+ * directly; files inside a group are biggest first. Labels are relative to the scanned root.
+ */
+export function byFolder(files: OldFile[], root: string) {
+  const groups = new Map<string, OldFile[]>();
+  for (const f of files) {
+    const dir = f.path.slice(0, f.path.lastIndexOf('\\'));
+    groups.set(dir, [...(groups.get(dir) ?? []), f]);
+  }
+  const base = root.replace(/\\+$/, '').toLowerCase();
+  return [...groups]
+    .sort(([a], [b]) => a.toLowerCase().localeCompare(b.toLowerCase()))
+    .map(([dir, fs]) => ({
+      dir,
+      label: dir.toLowerCase().startsWith(base) && dir.length > base.length ? dir.slice(base.length).replace(/^\\/, '') : dir,
+      bytes: fs.reduce((a, f) => a + f.size, 0),
+      files: [...fs].sort((a, b) => b.size - a.size),
+    }));
+}
+
 export function OldFiles({ busy, act, ask }: { busy: boolean; act: Act; ask: Ask }) {
   const [root, setRoot] = useState('');
   const [days, setDays] = useState(365);
@@ -166,20 +188,57 @@ export function OldFiles({ busy, act, ask }: { busy: boolean; act: Act; ask: Ask
             </Button>
           }
         >
-          <ul className="max-h-[50vh] space-y-1 overflow-y-auto">
-            {files.map((f) => (
-              <li key={f.path}>
-                <label className="flex items-center gap-2 text-xs text-slate-300">
-                  <input type="checkbox" className="accent-sky-500" checked={picked.has(f.path)} onChange={(e) => setPicked((s) => (e.target.checked ? new Set(s).add(f.path) : new Set([...s].filter((x) => x !== f.path))))} />
-                  <span className="truncate" title={f.path}>
-                    {f.path}
-                  </span>
-                  <span className="ml-auto shrink-0 text-slate-500">
-                    {formatBytes(f.size)} · last used {new Date(f.lastUsed).toLocaleDateString()}
-                  </span>
-                </label>
-              </li>
-            ))}
+          <ul className="max-h-[60vh] space-y-2 overflow-y-auto pr-1">
+            {byFolder(files, root).map((g) => {
+              const all = g.files.every((f) => picked.has(f.path));
+              const some = !all && g.files.some((f) => picked.has(f.path));
+              const setAll = (on: boolean) =>
+                setPicked((s) => {
+                  const n = new Set(s);
+                  for (const f of g.files) on ? n.add(f.path) : n.delete(f.path);
+                  return n;
+                });
+              return (
+                <li key={g.dir}>
+                  <details open className="rounded-lg bg-[var(--card-2)] ring-1 ring-[var(--line)]">
+                    <summary className="flex cursor-pointer list-none items-center gap-2 px-3 py-2 text-sm">
+                      <input
+                        type="checkbox"
+                        aria-label={`Pick all in ${g.label}`}
+                        checked={all}
+                        ref={(el) => {
+                          if (el) el.indeterminate = some;
+                        }}
+                        onClick={(e) => e.stopPropagation()}
+                        onChange={(e) => setAll(e.target.checked)}
+                      />
+                      <Icon name="box" className="h-4 w-4 shrink-0 text-sky-300" />
+                      <span className="truncate font-medium text-slate-100" title={g.dir}>
+                        {g.label}
+                      </span>
+                      <span className="ml-auto shrink-0 text-xs text-slate-400">
+                        {g.files.length} file(s) · {formatBytes(g.bytes)}
+                      </span>
+                    </summary>
+                    <ul className="space-y-1 border-t border-[var(--line)] px-3 py-2">
+                      {g.files.map((f) => (
+                        <li key={f.path}>
+                          <label className="flex items-center gap-2 text-xs text-slate-300">
+                            <input type="checkbox" checked={picked.has(f.path)} onChange={(e) => setPicked((s) => (e.target.checked ? new Set(s).add(f.path) : new Set([...s].filter((x) => x !== f.path))))} />
+                            <span className="truncate" title={f.path}>
+                              {f.path.slice(g.dir.length + 1)}
+                            </span>
+                            <span className="ml-auto shrink-0 text-slate-500">
+                              {formatBytes(f.size)} · last used {new Date(f.lastUsed).toLocaleDateString()}
+                            </span>
+                          </label>
+                        </li>
+                      ))}
+                    </ul>
+                  </details>
+                </li>
+              );
+            })}
           </ul>
         </FeatureCard>
       )}
