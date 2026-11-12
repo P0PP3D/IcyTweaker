@@ -5,7 +5,7 @@ import { createCleaner, driveHealth, type Env } from './cleaner/cleaner';
 import os from 'node:os';
 import path from 'node:path';
 import { spawn } from 'node:child_process';
-import type { Accent, LastScans, ProcessView, AppSettings, CleanResult, DriverJobView, FrametimeResult, GameValues, InvokeApi, NetAdapterView, Progress, ServiceInfo, ServiceLevel, ServiceStartType } from '../shared/types';
+import type { Accent, LastScans, ProcessView, RecycleItem, AppSettings, CleanResult, DriverJobView, FrametimeResult, GameValues, InvokeApi, NetAdapterView, Progress, ServiceInfo, ServiceLevel, ServiceStartType } from '../shared/types';
 import { POWERSHELL_EXE, SHUTDOWN_EXE, createSystemAdapter, isLiveEnv, liveAdapter, REG_EXE, runningProcesses, sz, type SettingRef } from './system/adapter';
 import { createProcessSampler, queryProcesses } from './system/processes';
 import { WPT_INSTALL_ARGS, XPERF, latencyCheck, traceDrivers } from './system/latency';
@@ -1349,6 +1349,21 @@ app.whenReady().then(async () => {
       // ---- Duplicate Finder and Old Files (read-only scans; deletes go to the Recycle Bin)
       findRoots: async () => analyzeRoots,
       lastScans: async () => lastScans,
+
+      /** What's in the Recycle Bin (all drives), through the Windows shell. Read-only. */
+      async recycleItems() {
+        const script =
+          "$o = @((New-Object -ComObject Shell.Application).NameSpace(10).Items() | ForEach-Object { $d = $_.ExtendedProperty('System.Recycle.DateDeleted'); $s = $_.ExtendedProperty('System.Size'); " +
+          "[pscustomobject]@{ name = $_.Name; from = [string]$_.ExtendedProperty('System.Recycle.DeletedFrom'); deleted = $(if ($d) { ([datetime]$d).ToString('o') } else { $null }); size = $(if ($s) { [int64]$s } else { 0 }); folder = [bool]$_.IsFolder } }); " +
+          'ConvertTo-Json -InputObject $o -Compress';
+        try {
+          const out = (await adapter.query(POWERSHELL_EXE, ['-NoProfile', '-NonInteractive', '-Command', script], 60_000)).trim();
+          const list = out ? (JSON.parse(out) as RecycleItem[]) : [];
+          return { items: list.sort((a, b) => (b.deleted ?? '').localeCompare(a.deleted ?? '')) };
+        } catch (err) {
+          return { items: [], error: `Could not read the Recycle Bin: ${(err as Error).message}` };
+        }
+      },
 
       async findDuplicates(root: unknown) {
         if (typeof root !== 'string' || !analyzeRoots.includes(root)) return { groups: [], error: 'Invalid request.' };

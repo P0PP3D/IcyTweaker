@@ -84,6 +84,7 @@ const api: OptimizerApi = {
   checkups: call('checkups'),
   lastScans: call('lastScans'),
   libraryArt: call('libraryArt'),
+  recycleItems: call('recycleItems'),
   getSettings: call('getSettings'),
   setSettings: call('setSettings'),
   findRoots: call('findRoots'),

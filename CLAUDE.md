@@ -192,5 +192,7 @@ Full spec: `docs/SPEC.md`. Work one phase of its "Build order" at a time.
   rebuilt from it. Pages show `ScanAge` (ui.tsx `ago`). Library games: Steam header art from Steam's local
   `appcache\librarycache` (main `libraryArt`). NVIDIA Control Panel opens via shortcut `nvidia-control-panel`
   (`NVCP_SCRIPT` in fixes.ts, shared with the fix).
+- Recycle Bin page lists items via Shell.Application NameSpace(10) (main `recycleItems`, read-only). Preset icons:
+  `ICON` map in Presets.tsx.
 - Hardware detection (~9 s) is cached in `hardware.json` (userData) and refreshed in the background. Start-up reads
   must run in parallel (sequential awaits defeat the batched reads).

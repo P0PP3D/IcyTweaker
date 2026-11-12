@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import clsx from 'clsx';
-import type { AppState, CleanResult, CleanRisk, CleanTargetView, Progress, ScanResult } from '../../shared/types';
-import { Badge, Banner, Button, MUTED_BADGE, Ring, ScanAge, formatBytes, type Ask } from '../ui';
+import type { AppState, CleanResult, CleanRisk, CleanTargetView, Progress, RecycleItem, ScanResult } from '../../shared/types';
+import { Icon } from '../icons';
+import { Badge, Banner, Button, MUTED_BADGE, Ring, ScanAge, ago, formatBytes, type Ask } from '../ui';
 import type { Act } from './General';
 
 const RISK: Record<CleanRisk, string> = {
@@ -268,7 +269,19 @@ export function CleanerPage({ group, state, busy, act, ask }: { group: Group; st
 /** Recycle Bin: how much it holds on every drive, and one button to empty it (Windows' own Clear-RecycleBin). */
 export function RecycleBin({ busy, act, ask }: { busy: boolean; act: Act; ask: Ask }) {
   const [scan, setScan] = useState<ScanResult | null>(null);
-  const load = useCallback(async () => setScan((await window.api.scanCleanTargets(['recycle-bin']))[0] ?? null), []);
+  const [items, setItems] = useState<{ items: RecycleItem[]; error?: string } | null>(null);
+  const [filter, setFilter] = useState('');
+  const [sort, setSort] = useState<'deleted' | 'size' | 'name'>('deleted');
+  const load = useCallback(async () => {
+    const [s, list] = await Promise.all([window.api.scanCleanTargets(['recycle-bin']), window.api.recycleItems()]);
+    setScan(s[0] ?? null);
+    setItems(list);
+  }, []);
+  const shown = useMemo(() => {
+    const q = filter.trim().toLowerCase();
+    const list = (items?.items ?? []).filter((i) => !q || `${i.name} ${i.from}`.toLowerCase().includes(q));
+    return [...list].sort((a, b) => (sort === 'size' ? b.size - a.size : sort === 'name' ? a.name.localeCompare(b.name) : (b.deleted ?? '').localeCompare(a.deleted ?? '')));
+  }, [items, filter, sort]);
   useEffect(() => void load(), [load]);
   const empty = scan !== null && scan.files === 0;
   async function emptyBin() {
@@ -304,6 +317,53 @@ export function RecycleBin({ busy, act, ask }: { busy: boolean; act: Act; ask: A
           </Button>
         </div>
       </div>
+
+      {items?.error && <p className="text-sm text-rose-300">{items.error}</p>}
+      {items && items.items.length > 0 && (
+        <div className="rounded-xl bg-[var(--card)] ring-1 ring-[var(--line)]">
+          <div className="flex flex-wrap items-center gap-2 border-b border-[var(--line)] px-4 py-3">
+            <span className="font-medium text-slate-100">{items.items.length} item(s)</span>
+            <input
+              type="search"
+              value={filter}
+              onChange={(e) => setFilter(e.target.value)}
+              placeholder="Filter by name or folder…"
+              aria-label="Filter Recycle Bin items"
+              className="ml-auto w-64 rounded-md bg-white/5 px-3 py-1 text-sm text-slate-100 ring-1 ring-white/10 placeholder:text-slate-500"
+            />
+            <select value={sort} onChange={(e) => setSort(e.target.value as typeof sort)} aria-label="Sort" className="rounded-md bg-white/5 px-2 py-1 text-sm text-slate-100 ring-1 ring-white/10">
+              <option value="deleted" className="bg-slate-900">Newest deleted</option>
+              <option value="size" className="bg-slate-900">Largest</option>
+              <option value="name" className="bg-slate-900">Name</option>
+            </select>
+          </div>
+          <ul className="max-h-[55vh] divide-y divide-[var(--line)] overflow-y-auto">
+            {shown.map((i, n) => (
+              <li key={`${i.from}\\${i.name}:${n}`} className="flex items-center gap-3 px-4 py-2">
+                {/* Windows lists archives (.zip, .rar…) as folders, since it can open them like one. */}
+                {(() => {
+                  const dir = i.folder && !/\.(zip|rar|7z|cab|tar|gz)$/i.test(i.name);
+                  return <Icon name={dir ? 'box' : 'list'} className={clsx('h-4 w-4 shrink-0', dir ? 'text-sky-300' : 'text-slate-400')} />;
+                })()}
+                <div className="min-w-0 flex-1">
+                  <div className="truncate text-sm text-slate-100" title={i.name}>
+                    {i.name}
+                  </div>
+                  <div className="truncate text-xs text-slate-500" title={i.from}>
+                    from {i.from || 'unknown folder'}
+                  </div>
+                </div>
+                <span className="w-28 shrink-0 text-right text-xs text-slate-400" title={i.deleted ? new Date(i.deleted).toLocaleString() : undefined}>
+                  {i.deleted ? `deleted ${ago(i.deleted)}` : ''}
+                </span>
+                <span className="w-20 shrink-0 text-right text-sm tabular-nums text-slate-200">{formatBytes(i.size)}</span>
+              </li>
+            ))}
+            {shown.length === 0 && <li className="px-4 py-3 text-sm text-slate-400">Nothing matches the filter.</li>}
+          </ul>
+          <p className="border-t border-[var(--line)] px-4 py-2 text-xs text-slate-500">To get something back, use Open Recycle Bin, right-click it and choose Restore.</p>
+        </div>
+      )}
     </section>
   );
 }

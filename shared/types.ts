@@ -686,6 +686,18 @@ export interface DirEntry {
   isDir: boolean;
 }
 
+/** One item in the Recycle Bin. */
+export interface RecycleItem {
+  name: string;
+  /** Folder it was deleted from. */
+  from: string;
+  /** When it was deleted (ISO), if Windows recorded it. */
+  deleted: string | null;
+  /** Bytes (a folder's total). */
+  size: number;
+  folder: boolean;
+}
+
 /** The last result of each scanner, with when it ran (`at`, ISO). */
 export interface LastScans {
   analyze?: { at: string; root: string; view: AnalyzeView };
@@ -862,6 +874,8 @@ export interface OptimizerApi {
   findRoots(): Promise<string[]>;
   /** A Steam library game's header art (data URL) from Steam's local cache; null = none. */
   libraryArt(id: string): Promise<string | null>;
+  /** Everything in the Recycle Bin, newest deleted first. */
+  recycleItems(): Promise<{ items: RecycleItem[]; error?: string }>;
   /** Last results of the Disk Analyzer, finders and cleaner scans. */
   lastScans(): Promise<LastScans>;
   findDuplicates(root: string): Promise<{ groups: DuplicateGroup[]; error?: string }>;
