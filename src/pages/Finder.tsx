@@ -1,0 +1,281 @@
+import { useEffect, useMemo, useState } from 'react';
+import type { DuplicateGroup, OldFile, PrivacySnapshot, PrivacyTraceView, Progress } from '../../shared/types';
+import { Button, FeatureCard, formatBytes, type Ask } from '../ui';
+import type { Act } from './General';
+
+function RootPicker({ value, onChange }: { value: string; onChange: (v: string) => void }) {
+  const [roots, setRoots] = useState<string[]>([]);
+  useEffect(() => {
+    void window.api.findRoots().then((r) => {
+      setRoots(r);
+      if (!value) onChange(r.at(-1) ?? ''); // your user folder by default
+    });
+  }, []);
+  return (
+    <select value={value} onChange={(e) => onChange(e.target.value)} aria-label="Folder to scan" className="rounded-md bg-white/5 px-2 py-1 text-sm text-slate-100 ring-1 ring-white/10">
+      {roots.map((r) => (
+        <option key={r} value={r}>
+          {r}
+        </option>
+      ))}
+    </select>
+  );
+}
+
+const name = (p: string) => p.split('\\').pop() ?? p;
+
+export function Duplicates({ busy, act, ask }: { busy: boolean; act: Act; ask: Ask }) {
+  const [root, setRoot] = useState('');
+  const [groups, setGroups] = useState<DuplicateGroup[] | null>(null);
+  const [error, setError] = useState<string>();
+  const [scanning, setScanning] = useState(false);
+  const [progress, setProgress] = useState<Progress | null>(null);
+  /** Files picked for removal. The first copy of each group starts unpicked (kept). */
+  const [picked, setPicked] = useState<Set<string>>(new Set());
+  useEffect(() => window.api.onProgress((p) => p.task === 'find' && setProgress(p.current ? p : null)), []);
+
+  async function scan() {
+    setScanning(true);
+    setGroups(null);
+    const r = await window.api.findDuplicates(root);
+    setGroups(r.groups);
+    setError(r.error);
+    // Suggest keeping the oldest copy of each set, removing the rest.
+    setPicked(new Set(r.groups.flatMap((g) => [...g.files].sort((a, b) => a.modified.localeCompare(b.modified)).slice(1).map((f) => f.path))));
+    setScanning(false);
+  }
+
+  const toggle = (p: string, on: boolean) => setPicked((s) => (on ? new Set(s).add(p) : new Set([...s].filter((x) => x !== p))));
+  const allPicked = (g: DuplicateGroup) => g.files.every((f) => picked.has(f.path));
+  const bytes = useMemo(() => (groups ?? []).reduce((a, g) => a + g.files.filter((f) => picked.has(f.path)).length * g.size, 0), [groups, picked]);
+  const blocked = (groups ?? []).some(allPicked);
+
+  async function remove() {
+    const ok = await ask('Move duplicates to the Recycle Bin?', `${picked.size} file(s), ${formatBytes(bytes)}. One copy of every set is kept. You can restore them from the Recycle Bin.`, 'Move to Recycle Bin');
+    if (!ok) return;
+    await act(() => window.api.trashFound([...picked]));
+    await scan();
+  }
+
+  return (
+    <section className="space-y-4">
+      <div>
+        <h2 className="text-xl font-semibold text-slate-100">Duplicate Finder</h2>
+        <p className="text-sm text-slate-400">Finds files that are exact copies (same size, then same content hash). Nothing is removed until you choose; one copy of each set is always kept.</p>
+      </div>
+      <div className="flex flex-wrap items-center gap-2">
+        <RootPicker value={root} onChange={setRoot} />
+        <Button primary disabled={busy || scanning || !root} onClick={scan}>
+          {scanning ? 'Scanning…' : 'Scan'}
+        </Button>
+        {scanning && <Button onClick={() => window.api.cancelFind()}>Cancel</Button>}
+        {progress && <span className="truncate text-xs text-slate-500">{progress.done} files · {progress.current}</span>}
+      </div>
+      {error && <p className="text-sm text-rose-300">{error}</p>}
+      {groups && (
+        <>
+          <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-[var(--line)] bg-[var(--card)] px-4 py-3 text-sm">
+            <span className="text-slate-300">
+              {groups.length} set(s) of copies (files of 1 MB and up). Picked: <span className="font-semibold text-slate-100">{picked.size}</span> · {formatBytes(bytes)}
+            </span>
+            <Button primary disabled={busy || picked.size === 0 || blocked} onClick={remove}>
+              Move picked to Recycle Bin
+            </Button>
+          </div>
+          {blocked && <p className="text-sm text-amber-300">Every copy of a set is picked. Keep at least one.</p>}
+          <ul className="space-y-2">
+            {groups.map((g) => (
+              <li key={g.files[0].path} className="space-y-1 rounded-xl border border-[var(--line)] bg-[var(--card)] px-4 py-3">
+                <div className="text-sm font-medium text-slate-100">
+                  {name(g.files[0].path)} <span className="font-normal text-slate-500">· {formatBytes(g.size)} each · {g.files.length} copies</span>
+                </div>
+                {g.files.map((f) => (
+                  <label key={f.path} className="flex items-center gap-2 text-xs text-slate-400">
+                    <input type="checkbox" className="accent-sky-500" checked={picked.has(f.path)} onChange={(e) => toggle(f.path, e.target.checked)} />
+                    <span className="truncate" title={f.path}>
+                      {f.path}
+                    </span>
+                    <span className="ml-auto shrink-0 text-slate-500">{new Date(f.modified).toLocaleDateString()}</span>
+                  </label>
+                ))}
+              </li>
+            ))}
+          </ul>
+        </>
+      )}
+    </section>
+  );
+}
+
+export function OldFiles({ busy, act, ask }: { busy: boolean; act: Act; ask: Ask }) {
+  const [root, setRoot] = useState('');
+  const [days, setDays] = useState(365);
+  const [files, setFiles] = useState<OldFile[] | null>(null);
+  const [error, setError] = useState<string>();
+  const [scanning, setScanning] = useState(false);
+  const [picked, setPicked] = useState<Set<string>>(new Set());
+
+  async function scan() {
+    setScanning(true);
+    setFiles(null);
+    const r = await window.api.findOldFiles(root, days);
+    setFiles(r.files);
+    setError(r.error);
+    setPicked(new Set());
+    setScanning(false);
+  }
+  const bytes = (files ?? []).filter((f) => picked.has(f.path)).reduce((a, f) => a + f.size, 0);
+
+  return (
+    <section className="space-y-4">
+      <div>
+        <h2 className="text-xl font-semibold text-slate-100">Old Files</h2>
+        <p className="text-sm text-slate-400">Large files (50 MB and up) you haven't opened or changed in a long time. Pick what to move to the Recycle Bin.</p>
+      </div>
+      <div className="flex flex-wrap items-center gap-2">
+        <RootPicker value={root} onChange={setRoot} />
+        <select value={days} onChange={(e) => setDays(Number(e.target.value))} aria-label="Not used for" className="rounded-md bg-white/5 px-2 py-1 text-sm text-slate-100 ring-1 ring-white/10">
+          {[90, 180, 365, 730].map((d) => (
+            <option key={d} value={d}>
+              Not used for {d >= 365 ? `${d / 365} year(s)` : `${d} days`}
+            </option>
+          ))}
+        </select>
+        <Button primary disabled={busy || scanning || !root} onClick={scan}>
+          {scanning ? 'Scanning…' : 'Scan'}
+        </Button>
+        {scanning && <Button onClick={() => window.api.cancelFind()}>Cancel</Button>}
+      </div>
+      {error && <p className="text-sm text-rose-300">{error}</p>}
+      {files && (
+        <FeatureCard
+          icon="drive"
+          title={`${files.length} old file(s)`}
+          subtitle={`${formatBytes(files.reduce((a, f) => a + f.size, 0))} in total`}
+          footer={
+            <Button
+              primary
+              disabled={busy || picked.size === 0}
+              onClick={async () => {
+                if (!(await ask('Move to the Recycle Bin?', `${picked.size} file(s), ${formatBytes(bytes)}. You can restore them from the Recycle Bin.`, 'Move to Recycle Bin'))) return;
+                await act(() => window.api.trashFound([...picked]));
+                await scan();
+              }}
+            >
+              Move picked to Recycle Bin ({formatBytes(bytes)})
+            </Button>
+          }
+        >
+          <ul className="max-h-[50vh] space-y-1 overflow-y-auto">
+            {files.map((f) => (
+              <li key={f.path}>
+                <label className="flex items-center gap-2 text-xs text-slate-300">
+                  <input type="checkbox" className="accent-sky-500" checked={picked.has(f.path)} onChange={(e) => setPicked((s) => (e.target.checked ? new Set(s).add(f.path) : new Set([...s].filter((x) => x !== f.path))))} />
+                  <span className="truncate" title={f.path}>
+                    {f.path}
+                  </span>
+                  <span className="ml-auto shrink-0 text-slate-500">
+                    {formatBytes(f.size)} · last used {new Date(f.lastUsed).toLocaleDateString()}
+                  </span>
+                </label>
+              </li>
+            ))}
+          </ul>
+        </FeatureCard>
+      )}
+    </section>
+  );
+}
+
+export function Privacy({ busy, act, ask }: { busy: boolean; act: Act; ask: Ask }) {
+  const [traces, setTraces] = useState<PrivacyTraceView[] | null>(null);
+  const [snaps, setSnaps] = useState<PrivacySnapshot[]>([]);
+  const [picked, setPicked] = useState<Set<string>>(new Set());
+  const load = async () => {
+    const t = await window.api.privacyTraces();
+    setTraces(t);
+    setPicked(new Set(t.filter((x) => x.count > 0).map((x) => x.id)));
+    setSnaps(await window.api.privacySnapshots());
+  };
+  useEffect(() => void load(), []);
+
+  return (
+    <section className="space-y-4">
+      <div>
+        <h2 className="text-xl font-semibold text-slate-100">Privacy Traces</h2>
+        <p className="text-sm text-slate-400">Lists Windows keeps of what you ran, searched and opened. Everything cleared here is backed up first and can be put back.</p>
+      </div>
+      <FeatureCard
+        icon="sparkles"
+        title="Clear traces"
+        subtitle="Registry lists go into the backup (Undo All restores them); recent items are kept as a privacy backup below"
+        footer={
+          <Button
+            primary
+            disabled={busy || picked.size === 0}
+            onClick={async () => {
+              if (!(await ask('Clear the selected traces?', 'They are backed up first, so you can restore them.', 'Clear'))) return;
+              await act(() => window.api.clearPrivacy([...picked]));
+              await load();
+            }}
+          >
+            Clear selected
+          </Button>
+        }
+      >
+        {!traces ? (
+          <p className="text-slate-400">Reading…</p>
+        ) : (
+          <ul className="space-y-2">
+            {traces.map((t) => (
+              <li key={t.id}>
+                <label className="flex items-start gap-3">
+                  <input
+                    type="checkbox"
+                    className="mt-1 accent-sky-500"
+                    checked={picked.has(t.id)}
+                    disabled={t.count === 0}
+                    onChange={(e) => setPicked((s) => (e.target.checked ? new Set(s).add(t.id) : new Set([...s].filter((x) => x !== t.id))))}
+                  />
+                  <span className="min-w-0 flex-1">
+                    <span className="text-slate-100">{t.name}</span> <span className="text-xs text-slate-500">{t.count} entr(ies)</span>
+                    <span className="block text-xs text-slate-400">{t.description}</span>
+                  </span>
+                </label>
+              </li>
+            ))}
+          </ul>
+        )}
+      </FeatureCard>
+      <div className="space-y-2">
+        <h3 className="text-sm font-semibold uppercase tracking-wide text-slate-400">Privacy backups</h3>
+        {snaps.length === 0 ? (
+          <p className="text-sm text-slate-500">No backups of recent items yet.</p>
+        ) : (
+          <ul className="space-y-2">
+            {snaps.map((s) => (
+              <li key={s.id} className="flex items-center gap-3 rounded-xl border border-[var(--line)] bg-[var(--card)] px-4 py-2.5 text-sm">
+                <span className="flex-1 text-slate-200">
+                  {s.id.replace(/T(\d{2})-(\d{2})-(\d{2}).*/, ' $1:$2')} <span className="text-slate-500">· {s.files} recent item(s)</span>
+                </span>
+                <Button disabled={busy} onClick={() => act(() => window.api.restorePrivacy(s.id)).then(load)}>
+                  Restore
+                </Button>
+                <Button
+                  disabled={busy}
+                  onClick={async () => {
+                    if (!(await ask('Delete this privacy backup?', 'Its recent items can no longer be restored.', 'Delete'))) return;
+                    await act(() => window.api.deletePrivacySnapshot(s.id));
+                    await load();
+                  }}
+                >
+                  Delete
+                </Button>
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
+    </section>
+  );
+}

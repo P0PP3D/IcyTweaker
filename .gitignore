@@ -1,0 +1,7 @@
+node_modules/
+dist/
+dist-electron/
+release/
+.test-tmp/
+# Untrusted third-party reference code: read-only, never built or committed.
+reference/
