@@ -33,6 +33,9 @@ export interface GameProfile {
    * Tokens: %VAR%, * (any folder, newest wins), {steamapp:ID} (its Steam install folder), {epic:AppName}, {riot:name}.
    */
   icon: string[];
+  /** Read the icon with Windows' own extractor: Electron's getFileIcon returns the generic program icon for some
+   * exes (Roblox's, checked 2026-11). */
+  shellIcon?: boolean;
   files: Record<string, { path: string; format: ConfigFormat }>;
   /** Every key gets the same value (e.g. current and last-confirmed resolution). */
   resolution?: { w: Key[]; h: Key[] };
@@ -71,19 +74,13 @@ const ue = (section: string, fullscreenKeys: string[]) => {
 
 const fn = ue('/Script/FortniteGame.FortGameUserSettings', ['PreferredFullscreenMode', 'LastConfirmedFullscreenMode']); // Fortnite has no FullscreenMode line
 const val = ue('/Script/ShooterGame.ShooterGameUserSettings', ['FullscreenMode', 'PreferredFullscreenMode', 'LastConfirmedFullscreenMode']);
-const mr = ue('/Script/Marvel.MarvelGameUserSettings', ['FullscreenMode', 'PreferredFullscreenMode', 'LastConfirmedFullscreenMode']);
-const { lowAa: _mrHasNoAaGroup, ...mrFlags } = mr.flags; // Marvel Rivals' file has no sg.AntiAliasingQuality
 const tot = ue('/Script/OPP.RBGameUserSettings', ['FullscreenMode', 'PreferredFullscreenMode', 'LastConfirmedFullscreenMode']);
 const { lowAa: _totHasNoAaGroup, ...totFlags } = tot.flags; // its AntiAliasingQuality is outside ScalabilityGroups
 // Dead by Daylight's file only lists values that differ from the defaults (";METADATA=(Diff=true)"): no resolution,
 // vsync or fullscreen lines to patch, so only the quality groups.
 const dbd = ue('/Script/DeadByDaylight.DBDGameUserSettings', []);
 const { lowEffects, lowMaterials, lowTextures, lowDetail, shadowsOff, lowAa } = dbd.flags;
-const mc = (name: string): Key => ({ file: 'options', name });
 
-const apex = (name: string): Key => ({ file: 'video', name: `setting.${name}` });
-const apexCfg = (name: string): Key => ({ file: 'settings', name });
-const cs = (name: string): Key => ({ file: 'video', name: `setting.${name}` });
 const rbx = (name: string): Key => ({ file: 'settings', name });
 const dl = (name: string): Key => ({ file: 'video', name: `setting.${name}` });
 
@@ -118,84 +115,6 @@ export const gameProfiles: GameProfile[] = [
     // Letterbox keys read from the dev PC's real file (2026-11): True = 4:3 shows with black bars.
     flags: { ...val.flags, noLetterbox: [[val.k('bShouldLetterbox'), 'False'], [val.k('bLastConfirmedShouldLetterbox'), 'False']] },
     recommended: { flags: ['fullscreen', 'vsyncOff', 'dynResOff', 'hdrOff', 'lowEffects', 'shadowsOff', 'lowDetail'] },
-  },
-  {
-    id: 'apex',
-    name: 'Apex Legends',
-    publisher: 'Electronic Arts',
-    checkedVersion: 'videoconfig.txt configversion 8',
-    note: 'The FPS cap is a launch option (+fps_max), not a settings file value.',
-    exe: ['r5apex.exe', 'r5apex_dx12.exe'],
-    install: { steam: 1172470 },
-    icon: ['{steamapp:1172470}\\r5apex.exe', '%ProgramFiles%\\EA Games\\Apex\\r5apex.exe'], // verify: EA app install folder
-    files: {
-      video: { path: '%USERPROFILE%\\Saved Games\\Respawn\\Apex\\local\\videoconfig.txt', format: 'kv' },
-      settings: { path: '%USERPROFILE%\\Saved Games\\Respawn\\Apex\\local\\settings.cfg', format: 'cfg' },
-    },
-    resolution: { w: [apex('defaultres')], h: [apex('defaultresheight')] },
-    aa: [
-      { label: 'None', set: [[apex('mat_antialias_mode'), '0']] },
-      { label: 'TSAA', set: [[apex('mat_antialias_mode'), '12']] },
-    ],
-    reflex: [
-      { label: 'Off', set: [[apexCfg('gfx_nvnUseLowLatency'), '0'], [apexCfg('gfx_nvnUseLowLatencyBoost'), '0']] },
-      { label: 'On', set: [[apexCfg('gfx_nvnUseLowLatency'), '1'], [apexCfg('gfx_nvnUseLowLatencyBoost'), '0']] },
-      { label: 'On + Boost', set: [[apexCfg('gfx_nvnUseLowLatency'), '1'], [apexCfg('gfx_nvnUseLowLatencyBoost'), '1']] },
-    ],
-    flags: {
-      fullscreen: [[apex('fullscreen'), '1'], [apex('nowindowborder'), '0']],
-      vsyncOff: [[apex('mat_vsync_mode'), '0']],
-      dynResOff: [[apex('dvs_enable'), '0']],
-      lowEffects: [[apex('particle_cpu_level'), '0']],
-      shadowsOff: [[apex('shadow_enable'), '0'], [apex('csm_enabled'), '0']],
-    },
-    recommended: { aa: 0, reflex: 1, flags: ['fullscreen', 'vsyncOff', 'dynResOff', 'lowEffects'] },
-  },
-  {
-    // verify: every key below. CS2 is not installed on the PC these were written on; a missing key makes Apply refuse.
-    id: 'cs2',
-    name: 'Counter-Strike 2',
-    publisher: 'Valve',
-    checkedVersion: 'not checked against a real cs2_video.txt (verify)',
-    note: 'The FPS cap is the console command fps_max, not a settings file value.',
-    exe: ['cs2.exe'],
-    install: { steam: 730 },
-    icon: ['{steamapp:730}\\game\\bin\\win64\\cs2.exe'],
-    files: { video: { path: '{steam}\\userdata\\*\\730\\local\\cfg\\cs2_video.txt', format: 'kv' } },
-    resolution: { w: [cs('defaultres')], h: [cs('defaultresheight')] },
-    aa: [
-      { label: 'None', set: [[cs('msaa_samples'), '0']] },
-      { label: 'MSAA 2x', set: [[cs('msaa_samples'), '2']] },
-      { label: 'MSAA 4x', set: [[cs('msaa_samples'), '4']] },
-      { label: 'MSAA 8x', set: [[cs('msaa_samples'), '8']] },
-    ],
-    reflex: ['Off', 'On', 'On + Boost'].map((label, i) => ({ label, set: [[cs('r_low_latency'), String(i)]] })),
-    flags: {
-      fullscreen: [[cs('fullscreen'), '1']],
-      vsyncOff: [[cs('mat_vsync'), '0']],
-      lowMaterials: [[cs('shaderquality'), '0']],
-      lowTextures: [[cs('videocfg_texture_detail'), '0']],
-      lowEffects: [[cs('videocfg_particle_detail'), '0']],
-    },
-    recommended: { aa: 2, reflex: 1, flags: ['fullscreen', 'vsyncOff', 'lowEffects'] },
-  },
-  {
-    id: 'marvel-rivals',
-    name: 'Marvel Rivals',
-    publisher: 'NetEase Games',
-    checkedVersion: 'GameUserSettings.ini as of 2026-11',
-    exe: ['marvel-win64-shipping.exe'], // verify: process name
-    install: { steam: 2767030 }, // verify: Steam app id
-    icon: ['{steamapp:2767030}\\MarvelGame\\Marvel\\Binaries\\Win64\\Marvel-Win64-Shipping.exe'], // verify: exe location
-    files: { gus: { path: '%LOCALAPPDATA%\\Marvel\\Saved\\Config\\Windows\\GameUserSettings.ini', format: 'ini' } },
-    resolution: mr.resolution,
-    fps: mr.fps,
-    reflex: [
-      { label: 'Off', set: [[mr.k('bNvidiaReflex'), 'False']] },
-      { label: 'On', set: [[mr.k('bNvidiaReflex'), 'True']] },
-    ],
-    flags: mrFlags,
-    recommended: { reflex: 1, flags: ['fullscreen', 'vsyncOff', 'dynResOff', 'hdrOff', 'lowEffects', 'shadowsOff', 'lowDetail'] },
   },
   {
     // Keys read from the dev PC's real files (video.txt "Version" 20, 2026-11). The FPS cap lives in the per-user
@@ -266,28 +185,6 @@ export const gameProfiles: GameProfile[] = [
     recommended: { flags: ['lowEffects', 'lowDetail'] },
   },
   {
-    // Keys read from the dev PC's real options.txt (data version 4671, 2026-11).
-    id: 'minecraft',
-    name: 'Minecraft: Java Edition',
-    publisher: 'Mojang Studios',
-    checkedVersion: 'options.txt data version 4671',
-    note: 'Java Edition only. Game Boost spots it as javaw.exe, so other Java apps count as Minecraft too. Resolution is set in the game.',
-    exe: ['javaw.exe'],
-    install: {},
-    icon: ['%ProgramFiles(x86)%\\Minecraft Launcher\\MinecraftLauncher.exe'], // verify: the Store launcher has no fixed path
-    files: { options: { path: '%APPDATA%\\.minecraft\\options.txt', format: 'colon' } },
-    fps: { key: mc('maxFps'), float: false, unlimited: '260' }, // the slider's top (260) shows as Unlimited
-    flags: {
-      fullscreen: [[mc('fullscreen'), 'true']],
-      vsyncOff: [[mc('enableVsync'), 'false']],
-      lowDetail: [[mc('graphicsMode'), '0'], [mc('renderClouds'), '"false"']], // 0 Fast, 1 Fancy, 2 Fabulous
-      lowEffects: [[mc('particles'), '2']], // 0 All, 1 Decreased, 2 Minimal
-      shadowsOff: [[mc('entityShadows'), 'false']],
-      aoOff: [[mc('ao'), 'false']],
-    },
-    recommended: { flags: ['vsyncOff', 'lowEffects'] },
-  },
-  {
     // Roblox's own user settings file. Hyperion (its anti-cheat) files are never touched.
     id: 'roblox',
     name: 'Roblox',
@@ -297,6 +194,7 @@ export const gameProfiles: GameProfile[] = [
     exe: ['robloxplayerbeta.exe'],
     install: {},
     icon: ['%LOCALAPPDATA%\\Roblox\\Versions\\*\\RobloxPlayerBeta.exe'],
+    shellIcon: true,
     files: { settings: { path: '%LOCALAPPDATA%\\Roblox\\GlobalBasicSettings_13.xml', format: 'xml' } },
     fps: { key: rbx('FramerateCap'), float: false, unlimited: '9999' }, // verify: 9999 = no cap (the value read with the cap off)
     flags: {

@@ -1524,8 +1524,16 @@ app.whenReady().then(async () => {
         for (const g of gameProfiles) {
           if (!iconCache.has(g.id)) {
             const exe = await findGameExe(g, gameEnv).catch(() => null);
-            const img = exe ? await app.getFileIcon(exe, { size: 'large' }).catch(() => null) : null;
-            iconCache.set(g.id, img && !img.isEmpty() ? img.toDataURL() : null);
+            if (exe && g.shellIcon) {
+              // Windows' own extractor (read-only query); Electron returns the generic icon for these exes.
+              const q = `'${exe.replace(/'/g, "''")}'`;
+              const script = `Add-Type -AssemblyName System.Drawing; $m = New-Object IO.MemoryStream; [System.Drawing.Icon]::ExtractAssociatedIcon(${q}).ToBitmap().Save($m, [System.Drawing.Imaging.ImageFormat]::Png); [Convert]::ToBase64String($m.ToArray())`;
+              const b64 = (await adapter.query(POWERSHELL_EXE, ['-NoProfile', '-NonInteractive', '-Command', script], 30_000).catch(() => '')).trim();
+              iconCache.set(g.id, /^[A-Za-z0-9+/=]{100,}$/.test(b64) ? `data:image/png;base64,${b64}` : null);
+            } else {
+              const img = exe ? await app.getFileIcon(exe, { size: 'large' }).catch(() => null) : null;
+              iconCache.set(g.id, img && !img.isEmpty() ? img.toDataURL() : null);
+            }
           }
           out[g.id] = iconCache.get(g.id)!;
         }

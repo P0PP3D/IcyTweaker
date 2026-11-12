@@ -162,8 +162,8 @@ describe('toggle status honesty', () => {
 });
 
 describe('new game profiles', () => {
-  it('Minecraft, Dead by Daylight and The Outlast Trials point at their own files only', () => {
-    for (const id of ['minecraft', 'dead-by-daylight', 'outlast-trials']) {
+  it('Dead by Daylight and The Outlast Trials point at their own files only', () => {
+    for (const id of ['dead-by-daylight', 'outlast-trials']) {
       const p = gameProfiles.find((g) => g.id === id)!;
       expect(p).toBeTruthy();
       for (const f of Object.values(p.flags).flat()) expect(Object.keys(p.files)).toContain(f[0].file);

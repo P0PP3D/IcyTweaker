@@ -167,8 +167,10 @@ Full spec: `docs/SPEC.md`. Work one phase of its "Build order" at a time.
   not saved; Reset = registry mode), set at session start, reset at end. Only modes the display lists.
 - Stutter log: `session.ts` `isDrop` (FPS < 60 % of the last 30 readings) -> main `recordStutter` (two
   Win32_Process samples 2 s apart, at most once a minute) -> `SessionReport.stutters`.
-- Config format `colon` (`key:value`, Minecraft options.txt). Profiles from real files on the dev PC: Minecraft,
-  Dead by Daylight (its ini is Diff=true: quality groups only), The Outlast Trials. Repo: github.com/P0PP3D/IcyTweaker.
+- Game profiles (owner's pick, 2026-11-12): Fortnite, VALORANT, Deadlock, The Outlast Trials, Dead by Daylight, Roblox.
+  Apex, CS2, Marvel Rivals and Minecraft were removed (config format `colon` stays, unused). `shellIcon`: icon via
+  System.Drawing ExtractAssociatedIcon (Electron gives Roblox's exe the generic icon). Dead by Daylight's ini is
+  Diff=true: quality groups only. Repo: github.com/P0PP3D/IcyTweaker.
 - Cleaner safety: `finder.ts` `keptOut` (games, Program Files, AppData, Windows folders on any drive) is skipped by
   Duplicate Finder / Old Files; `cleaner.ts` `isTempDir` (user-temp only cleans a folder named Temp/Tmp).
 - Restore point / restart status: `safety.hooks.activity` -> progress task 'restore-point' / 'restart' -> App `Activity`.

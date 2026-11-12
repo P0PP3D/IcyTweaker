@@ -202,9 +202,9 @@ describe('game discovery', () => {
     await mkdir(path.join(root, 'steamapps'), { recursive: true });
     await mkdir(path.join(lib, 'steamapps'), { recursive: true });
     await writeFile(path.join(root, 'steamapps', 'libraryfolders.vdf'), `"libraryfolders"\n{\n\t"0"\n\t{\n\t\t"path"\t\t"${lib.replace(/\\/g, '\\\\')}"\n\t}\n}\n`);
-    await writeFile(path.join(lib, 'steamapps', 'appmanifest_730.acf'), '');
+    await writeFile(path.join(lib, 'steamapps', 'appmanifest_1422450.acf'), '');
     const games = createGames(gameProfiles, await createSafety(memoryAdapter(liveRead), path.join(root, 'data')), { vars: {}, steamPath: root, programData: root });
-    expect((await games.list()).find((g) => g.id === 'cs2')!.status).toBe('no-config');
+    expect((await games.list()).find((g) => g.id === 'deadlock')!.status).toBe('no-config');
   });
 });
 
@@ -237,8 +237,8 @@ describe('game icons: finding the installed exe', () => {
     // Steam: the manifest's installdir under the library.
     await mkdir(path.join(steam, 'steamapps'), { recursive: true });
     await writeFile(path.join(steam, 'steamapps', 'libraryfolders.vdf'), `"libraryfolders"\n{\n\t"0"\n\t{\n\t\t"path"\t\t"${steam.replace(/\\/g, '\\\\')}"\n\t}\n}\n`);
-    await writeFile(path.join(steam, 'steamapps', 'appmanifest_730.acf'), '"AppState"\n{\n\t"installdir"\t\t"Counter-Strike Global Offensive"\n}\n');
-    await touch(steam, 'steamapps', 'common', 'Counter-Strike Global Offensive', 'game', 'bin', 'win64', 'cs2.exe');
+    await writeFile(path.join(steam, 'steamapps', 'appmanifest_1422450.acf'), '"AppState"\n{\n\t"installdir"\t\t"Deadlock"\n}\n');
+    await touch(steam, 'steamapps', 'common', 'Deadlock', 'game', 'bin', 'win64', 'deadlock.exe');
     // Epic and Riot install records.
     const fn = path.join(root, 'Fortnite');
     await touch(fn, 'FortniteGame', 'Binaries', 'Win64', 'FortniteClient-Win64-Shipping.exe');
@@ -253,11 +253,11 @@ describe('game icons: finding the installed exe', () => {
 
     const env: GameEnv = { vars: { LOCALAPPDATA: root, ProgramFiles: path.join(root, 'none') }, steamPath: steam, programData: pd };
     const exe = async (id: string) => findGameExe(gameProfiles.find((g) => g.id === id)!, env);
-    expect(await exe('cs2')).toBe(path.join(steam, 'steamapps', 'common', 'Counter-Strike Global Offensive', 'game', 'bin', 'win64', 'cs2.exe'));
+    expect(await exe('deadlock')).toBe(path.join(steam, 'steamapps', 'common', 'Deadlock', 'game', 'bin', 'win64', 'deadlock.exe'));
     expect(await exe('fortnite')).toBe(path.join(fn, 'FortniteGame', 'Binaries', 'Win64', 'FortniteClient-Win64-Shipping.exe'));
     expect((await exe('valorant'))?.toLowerCase()).toBe(path.join(val, 'VALORANT.exe').toLowerCase());
     expect(await exe('roblox')).toBe(path.join(root, 'Roblox', 'Versions', 'version-abc', 'RobloxPlayerBeta.exe'));
-    expect(await exe('apex')).toBeNull();
+    expect(await exe('dead-by-daylight')).toBeNull();
 
     // Launch: Steam/Epic URLs, Riot Client with product args, Roblox's own exe; null when not installed.
     const { launchTarget } = await import('./games/games');
@@ -265,10 +265,10 @@ describe('game icons: finding the installed exe', () => {
     await touch(root, 'Riot Client', 'RiotClientServices.exe');
     await writeFile(path.join(pd, 'Riot Games', 'RiotClientInstalls.json'), JSON.stringify({ associated_client: { [`${val.replace(/\\/g, '/')}/`]: rc }, rc_default: rc }));
     const launch = (id: string) => launchTarget(gameProfiles.find((g) => g.id === id)!, env);
-    expect(await launch('cs2')).toEqual({ url: 'steam://rungameid/730' });
+    expect(await launch('deadlock')).toEqual({ url: 'steam://rungameid/1422450' });
     expect(await launch('fortnite')).toEqual({ url: 'com.epicgames.launcher://apps/Fortnite?action=launch&silent=true' });
     expect(await launch('valorant')).toEqual({ exe: rc, args: ['--launch-product=valorant', '--launch-patchline=live'] });
     expect(await launch('roblox')).toEqual({ exe: path.join(root, 'Roblox', 'Versions', 'version-abc', 'RobloxPlayerBeta.exe'), args: [] });
-    expect(await launch('apex')).toBeNull();
+    expect(await launch('dead-by-daylight')).toBeNull();
   });
 });

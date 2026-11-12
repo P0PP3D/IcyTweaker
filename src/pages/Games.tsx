@@ -3,10 +3,7 @@ import clsx from 'clsx';
 import type { BoostOptions, BoostState, DisplayMode, FroststrapInfo, FrametimeResult, ToolStatus, GameFlag, GameStatus, GameValues, GameView, GameWinSettings, LibraryGame, SessionReport } from '../../shared/types';
 import { Badge, Button, MUTED_BADGE, Tabs, Toggle, type Ask } from '../ui';
 import type { Act } from './General';
-import apexArt from '../assets/games/apex.jpg';
-import cs2Art from '../assets/games/cs2.jpg';
 import deadlockArt from '../assets/games/deadlock.jpg';
-import marvelArt from '../assets/games/marvel-rivals.jpg';
 import dbdArt from '../assets/games/dead-by-daylight.jpg';
 import outlastArt from '../assets/games/outlast-trials.jpg';
 import fortniteLogo from '../assets/games/fortnite.png';
@@ -15,10 +12,7 @@ import robloxLogo from '../assets/games/roblox.png';
 
 /** Game artwork (see Docs/ASSETS.md for sources). cover = Steam header art; logo = a logo on a color tile. */
 const ART: Record<string, { src: string; kind: 'cover' } | { src: string; kind: 'logo'; bg: string; invert?: boolean }> = {
-  apex: { src: apexArt, kind: 'cover' },
-  cs2: { src: cs2Art, kind: 'cover' },
   deadlock: { src: deadlockArt, kind: 'cover' },
-  'marvel-rivals': { src: marvelArt, kind: 'cover' },
   'dead-by-daylight': { src: dbdArt, kind: 'cover' },
   'outlast-trials': { src: outlastArt, kind: 'cover' },
   fortnite: { src: fortniteLogo, kind: 'logo', bg: 'from-[#1e3a8a] via-[#4338ca] to-[#7c3aed]', invert: true },
