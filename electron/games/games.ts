@@ -227,6 +227,8 @@ export function createGames(profiles: GameProfile[], safety: Safety, env: GameEn
             },
             current: hasConfig ? await current(p, files) : { flags: [] },
             recommended: { ...p.recommended },
+            // When IcyCleaner first changed this game's settings (the backup's time): sessions before vs after it.
+            optimizedAt: owned(p).map((r) => safety.savedAt(r)).filter((x): x is string => !!x).sort()[0] ?? null,
           };
         }),
       );

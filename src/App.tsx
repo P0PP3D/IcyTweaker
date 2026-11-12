@@ -404,6 +404,8 @@ export function App() {
               </Banner>
             )}
 
+            {/* Keyed by page: each page fades in as you switch to it. */}
+            <div key={q ? 'search' : page} className="page-in">
             {q ? (
               <section className="space-y-3">
                 <h2 className="text-xl font-semibold text-slate-100">
@@ -416,7 +418,7 @@ export function App() {
                 </ul>
               </section>
             ) : page === 'home' ? (
-              <Home state={state} onOpenTweaks={() => go('general')} />
+              <Home state={state} go={go} />
             ) : page === 'general' ? (
               <General {...pageProps} />
             ) : page === 'debloater' ? (
@@ -466,6 +468,7 @@ export function App() {
             ) : (
               <SystemRestore {...pageProps} />
             )}
+            </div>
 
             <p className="truncate pt-2 text-xs text-slate-600">Backup and log: {state.dataDir}</p>
           </div>

@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import clsx from 'clsx';
 import type { AppState, ServiceInfo, ServiceLevel, ServiceStartType, TweakStatus } from '../../shared/types';
-import { Badge, Button, MUTED_BADGE, TweakRow, type Ask } from '../ui';
+import { Badge, Button, MUTED_BADGE, Tabs, TweakRow, type Ask } from '../ui';
 import { tweakHandlers, type Act } from './General';
 
 const LEVELS: Array<{ id: ServiceLevel; label: string; hint: string }> = [
@@ -194,24 +194,14 @@ export function Services({ state, busy, act, ask }: { state: AppState; busy: boo
           Turn off Windows services you don't use. Each service's original start type is backed up before the first change; turning a group back on, the Off level, or Undo All restores it.
         </p>
       </div>
-      <div role="tablist" className="flex gap-1">
-        {(
-          [
-            ['groups', 'Groups & levels'],
-            ['manager', 'Service manager'],
-          ] as const
-        ).map(([id, label]) => (
-          <button
-            key={id}
-            role="tab"
-            aria-selected={tab === id}
-            onClick={() => setTab(id)}
-            className={clsx('rounded-md px-3 py-1 text-sm', tab === id ? 'bg-sky-500/15 text-sky-200' : 'text-slate-400 hover:bg-white/5')}
-          >
-            {label}
-          </button>
-        ))}
-      </div>
+      <Tabs
+        tabs={[
+          { id: 'groups', label: 'Groups & levels', icon: 'layers' },
+          { id: 'manager', label: 'Service manager', icon: 'services' },
+        ]}
+        value={tab}
+        onChange={setTab}
+      />
       {tab === 'manager' ? (
         <ServiceManager busy={busy} act={act} ask={ask} />
       ) : (

@@ -50,7 +50,7 @@ import { memoryLists, purgeStandby } from './system/memory';
 const ACCENTS: Accent[] = ['blue', 'cyan', 'violet', 'emerald', 'indigo'];
 import { createStartup, startupSources } from './apps/startup';
 import { RUNTIMES, installRuntimes, wingetPath } from './resources/runtimes';
-import { LATENCY_TARGETS, dnsBenchmark, latencyTest, validHost } from './network/tests';
+import { LATENCY_TARGETS, dnsBenchmark, latencyTest, tcpProbe, validHost } from './network/tests';
 import { appendFile, copyFile, mkdir, readFile, writeFile } from 'node:fs/promises';
 
 const live = isLiveEnv(process.env, app.isPackaged); // installed builds are live; `npm run dev` is dry-run
@@ -388,7 +388,8 @@ app.whenReady().then(async () => {
     const toolsDir = path.join(app.getPath('userData'), 'tools');
     const overlayFeed = createOverlayFeed({
       systemRoot: sysRoot,
-      send: (st) => {
+      send: (raw) => {
+        const st = { ...raw, ping };
         overlayWin?.webContents.send('overlay', st);
         const before = sessions.sample(st);
         if (before !== null && st.fps != null && Date.now() - lastStutter > 60_000) {
@@ -412,8 +413,13 @@ app.whenReady().then(async () => {
         .map((p) => ({ name: p.name, cpu: p.cpu }));
       sessions.stutter({ at, fps: Math.round(fps), before, top });
     }
+    // Overlay ping: one TCP handshake to Cloudflare (1.1.1.1:443, the nearest of its servers) every 2 s while the
+    // overlay is on. Shows connection spikes; it is not the game server's own ping (games don't expose it).
+    let ping: number | null = null;
+    let pingTimer: ReturnType<typeof setInterval> | null = null;
     async function startOverlay(exe: string, name: string) {
       if (!admin) throw new Error('The overlay needs administrator (Windows event tracing). Relaunch as admin first.');
+      pingTimer ??= setInterval(() => void tcpProbe('1.1.1.1', 443, 1500).then((ms) => (ping = ms === null ? null : Math.round(ms))), 2000);
       const lhmDir = path.join(toolsDir, 'lhm-0.9.6');
       overlayFeed.start(await ensurePresentMon(adapter, toolsDir), exe, name, existsSync(path.join(lhmDir, 'LibreHardwareMonitorLib.dll')) ? lhmDir : null);
       if (!overlayWin) {
@@ -422,7 +428,7 @@ app.whenReady().then(async () => {
           x: area.x + 16,
           y: area.y + 16,
           width: 230,
-          height: 140,
+          height: 162,
           frame: false,
           transparent: true,
           alwaysOnTop: true,
@@ -450,6 +456,9 @@ app.whenReady().then(async () => {
       if (g && exe) await startOverlay(exe, g.name).catch(() => {});
     }
     async function stopOverlay() {
+      if (pingTimer) clearInterval(pingTimer);
+      pingTimer = null;
+      ping = null;
       overlayFeed.stop();
       overlayWin?.close();
       overlayWin = null;
@@ -1287,6 +1296,17 @@ app.whenReady().then(async () => {
 
       monitors: () => monitors(adapter).catch(() => []),
       displayModes: () => displayModes(adapter).catch(() => []),
+
+      // Home checkups (read-only): total shader cache size (Cleaner's own targets) and each GPU driver's date.
+      async checkups() {
+        const ids = ['nvidia-shaders', 'amd-shaders', 'intel-shaders', 'directx-shader-cache', 'steam-shaders'];
+        const scans = await Promise.all(ids.map((id) => cleaner.get(id)).filter((x) => !!x).map((x) => cleaner.scan(x!)));
+        return {
+          shaderBytes: scans.reduce((a, s) => a + s.bytes, 0),
+          shaderIds: scans.filter((s) => s.bytes > 0).map((s) => s.id),
+          gpus: (hwCache?.hw.gpus ?? []).filter((g) => g.vendor !== 'other').map((g) => ({ name: g.name, vendor: g.vendor, driverDate: g.driverDate ?? null })),
+        };
+      },
 
       // ---- Duplicate Finder and Old Files (read-only scans; deletes go to the Recycle Bin)
       findRoots: async () => analyzeRoots,

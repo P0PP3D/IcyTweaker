@@ -1,15 +1,13 @@
 import { useCallback, useEffect, useState } from 'react';
 import clsx from 'clsx';
 import type { AppState, BootInfo, StartupItemView } from '../../shared/types';
-import { Badge, Button, Toggle, TweakRow, type Ask } from '../ui';
+import { Badge, Button, Tabs, Toggle, TweakRow, type Ask } from '../ui';
 import { tweakHandlers, type Act } from './General';
 
 const sec = (ms: number | null) => (ms === null ? '—' : `${(ms / 1000).toFixed(1)} s`);
 
 /** Boot analysis: Windows' own boot timing and the apps it saw slowing startup. */
-function BootTimes() {
-  const [res, setRes] = useState<{ info?: BootInfo; error?: string } | null>(null);
-  useEffect(() => void window.api.bootInfo().then(setRes), []);
+function BootTimes({ res }: { res: { info?: BootInfo; error?: string } | null }) {
   const b = res?.info;
   return (
     <div className="space-y-2 rounded-xl border border-[var(--line)] bg-[var(--card)] px-4 py-3">
@@ -62,11 +60,16 @@ function StartupItems({ busy, act }: { busy: boolean; act: Act }) {
   const [res, setRes] = useState<{ items: StartupItemView[]; error?: string } | null>(null);
   const load = useCallback(async () => setRes(await window.api.listStartup()), []);
   useEffect(() => void load(), [load]);
-  const items = [...(res?.items ?? [])].sort((a, b) => Number(b.enabled) - Number(a.enabled) || a.name.localeCompare(b.name));
+  const [boot, setBoot] = useState<{ info?: BootInfo; error?: string } | null>(null);
+  useEffect(() => void window.api.bootInfo().then(setBoot), []);
+  /** Windows' own record of how much this app slowed startup (event 101), matched by its program file. */
+  const impact = (i: StartupItemView) =>
+    boot?.info?.slowApps.find((s) => (s.file && i.command.toLowerCase().includes(s.file.toLowerCase())) || s.name.toLowerCase() === i.name.toLowerCase())?.degradationMs ?? null;
+  const items = [...(res?.items ?? [])].sort((a, b) => Number(b.enabled) - Number(a.enabled) || (impact(b) ?? 0) - (impact(a) ?? 0) || a.name.localeCompare(b.name));
 
   return (
     <div className="space-y-2">
-      <BootTimes />
+      <BootTimes res={boot} />
       <div className="flex flex-wrap items-center justify-between gap-2">
         <p className="text-sm text-slate-400">
           Apps that start when you sign in. Turning one off works like Task Manager's Startup tab: nothing is deleted, and Undo All turns it back on.
@@ -86,6 +89,11 @@ function StartupItems({ busy, act }: { busy: boolean; act: Act }) {
                 <div className="flex flex-wrap items-center gap-2">
                   <span className="text-sm font-medium text-slate-100">{i.name}</span>
                   {i.requiresAdmin && <Badge className="bg-violet-500/15 text-violet-300 ring-violet-500/30">admin</Badge>}
+                  {impact(i) !== null && (
+                    <span title="Windows recorded this app slowing your startup by this much" className="rounded-md bg-amber-500/10 px-1.5 text-[11px] font-medium text-amber-300 ring-1 ring-amber-500/30">
+                      +{sec(impact(i))} at startup
+                    </span>
+                  )}
                   <span className="text-[11px] text-slate-500">{i.location}</span>
                 </div>
                 <p className="truncate font-mono text-[11px] text-slate-500" title={i.command}>
@@ -111,24 +119,14 @@ export function AppOptimizer({ state, busy, act, ask }: { state: AppState; busy:
         <h2 className="text-xl font-semibold text-slate-100">App Optimizer</h2>
         <p className="text-sm text-slate-400">Cuts what apps do in the background while you play. Each original setting is backed up; turning a card off puts it back.</p>
       </div>
-      <div role="tablist" className="flex gap-1">
-        {(
-          [
-            ['apps', 'Apps'],
-            ['startup', 'Startup items'],
-          ] as const
-        ).map(([id, label]) => (
-          <button
-            key={id}
-            role="tab"
-            aria-selected={tab === id}
-            onClick={() => setTab(id)}
-            className={clsx('rounded-md px-3 py-1 text-sm', tab === id ? 'bg-sky-500/15 text-sky-200' : 'text-slate-400 hover:bg-white/5')}
-          >
-            {label}
-          </button>
-        ))}
-      </div>
+      <Tabs
+        tabs={[
+          { id: 'apps', label: 'Apps', icon: 'app' },
+          { id: 'startup', label: 'Startup items', icon: 'restore' },
+        ]}
+        value={tab}
+        onChange={setTab}
+      />
       {tab === 'startup' ? (
         <StartupItems busy={busy} act={act} />
       ) : (

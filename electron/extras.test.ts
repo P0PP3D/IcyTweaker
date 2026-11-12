@@ -1,6 +1,8 @@
 // Share codes, Minecraft's key:value format, FPS-drop detection, Game Boost display mode, the new game profiles.
 // Fake adapter and ./.test-tmp/extras only; nothing written to Windows.
-import { mkdir, rm } from 'node:fs/promises';
+import { mkdir, rm, writeFile } from 'node:fs/promises';
+import { scanLibrary } from './games/library';
+import { parseBoot } from './system/boot';
 import path from 'node:path';
 import { afterAll, describe, expect, it } from 'vitest';
 import { isTempDir } from './cleaner/cleaner';
@@ -107,6 +109,26 @@ describe('cleaner safety', () => {
     expect(isTempDir('C:\\Users\\Me\\AppData\\Local\\Temp')).toBe(true);
     expect(isTempDir('D:\\tmp\\')).toBe(true);
     expect(isTempDir('C:\\Users\\Me\\Documents')).toBe(false);
+  });
+});
+
+describe('library and startup impact', () => {
+  it('always-running Steam tools (docks, wallpapers, scalers) are not treated as games', async () => {
+    const steam = path.join(dir(), 'steam');
+    const apps = path.join(steam, 'steamapps');
+    await mkdir(apps, { recursive: true });
+    await writeFile(path.join(apps, 'libraryfolders.vdf'), `"libraryfolders"\n{\n\t"0"\n\t{\n\t\t"path"\t\t"${steam.replace(/\\/g, '\\\\')}"\n\t}\n}\n`);
+    for (const [id, name] of [['1', 'MyDockFinder'], ['2', 'Wallpaper Engine'], ['3', 'Lossless Scaling'], ['4', 'Real Game']]) {
+      await writeFile(path.join(apps, `appmanifest_${id}.acf`), `"AppState"\n{\n\t"appid"\t\t"${id}"\n\t"name"\t\t"${name}"\n\t"installdir"\t\t"g${id}"\n}\n`);
+      await mkdir(path.join(apps, 'common', `g${id}`), { recursive: true });
+      await writeFile(path.join(apps, 'common', `g${id}`, 'app.exe'), Buffer.alloc(10));
+    }
+    const list = await scanLibrary({ vars: {}, steamPath: steam, programData: path.join(TMP, 'none') });
+    expect(list.map((g) => g.name)).toEqual(['Real Game']);
+  });
+  it('boot info keeps the slow app\'s file name (to match startup entries)', () => {
+    const b = parseBoot(JSON.stringify({ lastBoot: 'x', boots: [], slow: [{ name: 'Microsoft OneDrive', file: 'OneDrive.exe', total: 5000, degradation: 2300 }], error: null }), true);
+    expect(b.slowApps).toEqual([{ name: 'Microsoft OneDrive', degradationMs: 2300, file: 'OneDrive.exe' }]);
   });
 });
 

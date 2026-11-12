@@ -201,7 +201,7 @@ export interface HardwareInfo {
   cores: number;
   threads: number;
   laptop: boolean;
-  gpus: Array<{ name: string; driver: string; pnp: string; vendor: 'NVIDIA' | 'AMD' | 'Intel' | 'other' }>;
+  gpus: Array<{ name: string; driver: string; pnp: string; vendor: 'NVIDIA' | 'AMD' | 'Intel' | 'other'; driverDate?: string | null }>;
   nics: Array<{ name: string; pnp: string }>;
   memory: { totalBytes: number; modules: number; type: 'DDR4' | 'DDR5' | null; ratedMTs: number | null; runningMTs: number | null };
   virtualization: { firmware: boolean | null; hypervisor: boolean };
@@ -340,6 +340,8 @@ export interface OverlayStats {
   gpuLoad: number | null;
   cpu: number | null;
   cpuTemp: number | null;
+  /** Internet round trip (TCP handshake to 1.1.1.1), ms. */
+  ping?: number | null;
 }
 
 /** One driver from a latency trace. maxUs = its longest DPC/ISR (bucket upper bound, microseconds). */
@@ -408,7 +410,7 @@ export interface BootInfo {
   lastMainMs: number | null;
   lastPostMs: number | null;
   /** Apps Windows recorded as slowing startup, worst first. */
-  slowApps: Array<{ name: string; degradationMs: number }>;
+  slowApps: Array<{ name: string; degradationMs: number; file?: string }>;
   note?: string;
 }
 
@@ -592,6 +594,8 @@ export interface GameView {
   /** Read from the config file; empty when there is none. */
   current: GameValues;
   recommended: GameValues;
+  /** When IcyCleaner first changed this game's settings; null = not optimized. */
+  optimizedAt?: string | null;
 }
 
 export interface AppState {
@@ -839,6 +843,8 @@ export interface OptimizerApi {
   applyConfig(confirmed?: boolean): Promise<ActionReport>;
   bootInfo(): Promise<{ info?: BootInfo; error?: string }>;
   monitors(): Promise<MonitorInfo[]>;
+  /** Home checkups: shader cache total and GPU driver dates. */
+  checkups(): Promise<{ shaderBytes: number; shaderIds: string[]; gpus: Array<{ name: string; vendor: string; driverDate: string | null }> }>;
   /** The primary display's modes (Game Boost display option). */
   displayModes(): Promise<DisplayMode[]>;
   getSettings(): Promise<AppSettings>;

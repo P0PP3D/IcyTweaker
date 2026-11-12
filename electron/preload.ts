@@ -81,6 +81,7 @@ const api: OptimizerApi = {
   bootInfo: call('bootInfo'),
   monitors: call('monitors'),
   displayModes: call('displayModes'),
+  checkups: call('checkups'),
   getSettings: call('getSettings'),
   setSettings: call('setSettings'),
   findRoots: call('findRoots'),

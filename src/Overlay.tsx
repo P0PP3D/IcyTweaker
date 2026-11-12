@@ -24,6 +24,7 @@ export function Overlay() {
       {row('Frame', s?.frametime != null ? `${s.frametime} ms` : '—')}
       {row('GPU', s?.gpuLoad != null ? `${s.gpuLoad}%${s.gpuTemp != null ? ` · ${s.gpuTemp}°C` : ''}` : '—', s?.gpuTemp != null && s.gpuTemp >= 83 ? 'text-rose-300' : 'text-slate-100')}
       {row('CPU', s?.cpu != null ? `${s.cpu}%${s.cpuTemp != null ? ` · ${s.cpuTemp}°C` : ''}` : '—', s?.cpuTemp != null && s.cpuTemp >= 90 ? 'text-rose-300' : 'text-slate-100')}
+      {row('Ping', s?.ping != null ? `${s.ping} ms` : '—', s?.ping == null ? 'text-slate-400' : s.ping < 50 ? 'text-emerald-300' : s.ping < 100 ? 'text-sky-200' : 'text-amber-300')}
     </div>
   );
 }

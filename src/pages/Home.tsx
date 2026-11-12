@@ -1,11 +1,19 @@
 import { useEffect, useState } from 'react';
+import clsx from 'clsx';
 import type { AppState, MonitorInfo, Stats } from '../../shared/types';
+import { Icon, type IconName } from '../icons';
 import { Button, Ring } from '../ui';
 import { appliedCount } from './General';
 
 const gb = (bytes: number) => (bytes / 1024 ** 3).toFixed(1);
+type Go = (page: 'general' | 'health' | 'games' | 'apps' | 'resources') => void;
 
-export function Home({ state, onOpenTweaks }: { state: AppState; onOpenTweaks: () => void }) {
+const greeting = () => {
+  const h = new Date().getHours();
+  return h < 5 ? 'Late night session' : h < 12 ? 'Good morning' : h < 18 ? 'Good afternoon' : 'Good evening';
+};
+
+export function Home({ state, go }: { state: AppState; go: Go }) {
   const [stats, setStats] = useState<Stats | null>(null);
 
   useEffect(() => {
@@ -20,63 +28,129 @@ export function Home({ state, onOpenTweaks }: { state: AppState; onOpenTweaks: (
     };
   }, []);
 
-
+  const applied = appliedCount(state.tweaks);
   return (
     <section className="space-y-5">
-      <h2 className="text-xl font-semibold text-slate-100">Home</h2>
+      <div className="flex flex-wrap items-end justify-between gap-3">
+        <div>
+          <h2 className="text-2xl font-semibold tracking-tight text-slate-50">{greeting()}</h2>
+          <p className="text-sm text-slate-400">Here is how your PC is doing right now.</p>
+        </div>
+        <div className="flex gap-2 text-xs">
+          <Chip on={state.live} label={state.live ? 'Live' : 'Dry-run'} />
+          <Chip on={state.isAdmin} label={state.isAdmin ? 'Administrator' : 'Not admin'} />
+        </div>
+      </div>
+
       <div className="grid grid-cols-3 gap-4">
         <Ring label="CPU" value={stats?.cpu ?? null} />
         <Ring label="GPU" value={stats ? stats.gpu : null} detail="3D engine" />
-        <Ring
-          label="RAM"
-          value={stats ? Math.round((100 * stats.ramUsed) / stats.ramTotal) : null}
-          detail={stats ? `${gb(stats.ramUsed)} / ${gb(stats.ramTotal)} GB` : undefined}
-        />
+        <Ring label="RAM" value={stats ? Math.round((100 * stats.ramUsed) / stats.ramTotal) : null} detail={stats ? `${gb(stats.ramUsed)} / ${gb(stats.ramTotal)} GB` : undefined} />
       </div>
-      <div className="flex items-center justify-between rounded-xl bg-[var(--card)] px-5 py-4 ring-1 ring-[var(--line)]">
-        <div>
-          <div className="text-sm text-slate-400">General tweaks</div>
-          <div className="text-lg font-semibold text-slate-100">
-            {appliedCount(state.tweaks)} applied
-          </div>
-        </div>
-        <Button primary onClick={onOpenTweaks}>
-          Review tweaks
-        </Button>
+
+      <div className="grid gap-3 sm:grid-cols-3">
+        <Action icon="sliders" title="Tweaks" text={`${applied} applied`} onClick={() => go('general')} />
+        <Action icon="pulse" title="Health Check" text="Clean safe junk in one click" onClick={() => go('health')} />
+        <Action icon="gamepad" title="Game profiles" text="Competitive settings and Game Boost" onClick={() => go('games')} />
       </div>
-      <Monitors />
+
+      <Checkups go={go} />
     </section>
   );
 }
 
-/** Monitor refresh check: flags a display running below the refresh rate it supports. */
-function Monitors() {
-  const [list, setList] = useState<MonitorInfo[] | null>(null);
-  useEffect(() => void window.api.monitors().then(setList), []);
-  if (!list?.length) return null;
+function Chip({ on, label }: { on: boolean; label: string }) {
   return (
-    <div className="space-y-2 rounded-xl bg-[var(--card)] px-5 py-4 ring-1 ring-[var(--line)]">
-      <div className="text-sm text-slate-400">Displays</div>
-      {list.map((m, i) => {
-        const low = m.hz < m.maxHz;
-        return (
-          <div key={i} className="flex flex-wrap items-center justify-between gap-2">
-            <div className="text-sm">
-              <span className="font-medium text-slate-100">{m.name}</span>{' '}
-              <span className="text-slate-400">
-                {m.width}×{m.height} at <span className={low ? 'font-semibold text-amber-300' : 'text-emerald-300'}>{m.hz} Hz</span>
-                {low ? ` (supports ${m.maxHz} Hz)` : ' (its highest)'}
-              </span>
+    <span className={clsx('inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 ring-1', on ? 'bg-emerald-500/10 text-emerald-300 ring-emerald-500/30' : 'bg-white/5 text-slate-400 ring-white/10')}>
+      <span className={clsx('h-1.5 w-1.5 rounded-full', on ? 'bg-emerald-400' : 'bg-slate-500')} />
+      {label}
+    </span>
+  );
+}
+
+function Action({ icon, title, text, onClick }: { icon: IconName; title: string; text: string; onClick: () => void }) {
+  return (
+    <button
+      onClick={onClick}
+      className="group flex items-center gap-3 rounded-xl bg-[var(--card)] px-4 py-3 text-left ring-1 ring-[var(--line)] transition hover:-translate-y-0.5 hover:bg-white/[0.04] hover:ring-sky-500/40 motion-reduce:hover:translate-y-0"
+    >
+      <span className="grid h-10 w-10 shrink-0 place-items-center rounded-lg bg-sky-500/10 text-sky-300 ring-1 ring-sky-500/20 transition group-hover:bg-sky-500/20">
+        <Icon name={icon} className="h-5 w-5" />
+      </span>
+      <span className="min-w-0">
+        <span className="block font-medium text-slate-100">{title}</span>
+        <span className="block truncate text-xs text-slate-400">{text}</span>
+      </span>
+      <span className="ml-auto text-slate-600 transition group-hover:translate-x-0.5 group-hover:text-sky-300">›</span>
+    </button>
+  );
+}
+
+type Tone = 'good' | 'warn' | 'info';
+const DOT: Record<Tone, string> = { good: 'bg-emerald-400', warn: 'bg-amber-400', info: 'bg-slate-500' };
+const DRIVER_OLD_DAYS = 90;
+const SHADER_BIG_GB = 10;
+
+/** Checkups: display refresh rate, GPU driver age, shader cache size. Read-only. */
+function Checkups({ go }: { go: Go }) {
+  const [monitors, setMonitors] = useState<MonitorInfo[] | null>(null);
+  const [c, setC] = useState<Awaited<ReturnType<typeof window.api.checkups>> | null>(null);
+  useEffect(() => void window.api.monitors().then(setMonitors), []);
+  useEffect(() => void window.api.checkups().then(setC, () => {}), []);
+
+  const rows: Array<{ tone: Tone; title: string; text: string; action?: { label: string; run: () => void } }> = [];
+  for (const m of monitors ?? []) {
+    const low = m.hz < m.maxHz;
+    rows.push({
+      tone: low ? 'warn' : 'good',
+      title: `${m.name}: ${m.width}×${m.height} at ${m.hz} Hz`,
+      text: low ? `It supports ${m.maxHz} Hz. Pick it in Advanced display settings.` : 'Running at its highest refresh rate.',
+      action: low ? { label: `Set ${m.maxHz} Hz`, run: () => void window.api.openShortcut('display') } : undefined,
+    });
+  }
+  for (const g of c?.gpus ?? []) {
+    const date = g.driverDate ? new Date(`${g.driverDate}T00:00`) : null; // local midnight: a bare date would be UTC
+    const days = date ? Math.floor((Date.now() - date.getTime()) / 86_400_000) : null;
+    const old = days !== null && days > DRIVER_OLD_DAYS;
+    rows.push({
+      tone: days === null ? 'info' : old ? 'warn' : 'good',
+      title: `${g.name} driver`,
+      text: days === null ? 'Driver date unknown.' : `${date!.toLocaleDateString()} (${days} days old)${old ? '. Newer drivers often fix game performance.' : '.'}`,
+      action: old && g.vendor === 'NVIDIA' ? { label: 'Driver tools', run: () => go('resources') } : undefined,
+    });
+  }
+  if (c) {
+    const big = c.shaderBytes > SHADER_BIG_GB * 1024 ** 3;
+    rows.push({
+      tone: big ? 'warn' : 'good',
+      title: `Shader caches: ${gb(c.shaderBytes)} GB`,
+      text: big ? 'Large caches waste disk space; games rebuild what they need (expect a short stutter on first launch).' : 'A normal size.',
+      action: big ? { label: 'Clean in App Caches', run: () => go('apps') } : undefined,
+    });
+  }
+
+  return (
+    <div className="rounded-xl bg-[var(--card)] ring-1 ring-[var(--line)]">
+      <div className="flex items-center justify-between px-5 pt-4">
+        <div className="font-medium text-slate-100">Checkups</div>
+        {(!monitors || !c) && <span className="text-xs text-slate-500">Checking…</span>}
+      </div>
+      <ul className="divide-y divide-[var(--line)] px-2 pb-2 pt-1">
+        {rows.map((r) => (
+          <li key={r.title} className="flex items-center gap-3 px-3 py-2.5">
+            <span className={clsx('h-2 w-2 shrink-0 rounded-full', DOT[r.tone], r.tone === 'warn' && 'motion-safe:animate-pulse')} />
+            <div className="min-w-0 flex-1">
+              <div className="truncate text-sm text-slate-100">{r.title}</div>
+              <div className="text-xs text-slate-400">{r.text}</div>
             </div>
-            {low && (
-              <Button primary onClick={() => void window.api.openShortcut('display')}>
-                Set {m.maxHz} Hz
+            {r.action && (
+              <Button primary onClick={r.action.run}>
+                {r.action.label}
               </Button>
             )}
-          </div>
-        );
-      })}
-      {list.some((m) => m.hz < m.maxHz) && <p className="text-xs text-slate-500">In Advanced display settings, pick the monitor and choose the higher refresh rate.</p>}
+          </li>
+        ))}
+      </ul>
     </div>
   );
 }

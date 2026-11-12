@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import clsx from 'clsx';
 import type { BoostOptions, BoostState, DisplayMode, FroststrapInfo, FrametimeResult, ToolStatus, GameFlag, GameStatus, GameValues, GameView, GameWinSettings, LibraryGame, SessionReport } from '../../shared/types';
-import { Badge, Button, MUTED_BADGE, Toggle, type Ask } from '../ui';
+import { Badge, Button, MUTED_BADGE, Tabs, Toggle, type Ask } from '../ui';
 import type { Act } from './General';
 import apexArt from '../assets/games/apex.jpg';
 import cs2Art from '../assets/games/cs2.jpg';
@@ -42,7 +42,7 @@ function ResolutionPresets({ width, height, onPick, disabled }: { width?: number
   // The main display's real pixels (devicePixelRatio undoes Windows scaling).
   const native = { w: Math.round(window.screen.width * window.devicePixelRatio), h: Math.round(window.screen.height * window.devicePixelRatio), tag: 'your screen' };
   const list = [native, ...RES_PRESETS.filter((p) => p.w !== native.w || p.h !== native.h)];
-  const stretched = width && height && Math.abs(width / height - native.w / native.h) > 0.02;
+  const stretched = width && height && width / height < native.w / native.h - 0.02; // narrower than the screen (wider = ultrawide)
   return (
     <div className="space-y-1.5">
       <div className="flex flex-wrap gap-1.5" role="group" aria-label="Resolution presets">
@@ -516,6 +516,26 @@ function Editor({ g, icon, busy, act, ask, reload }: { g: GameView; icon?: strin
     await reload();
   }
 
+  /** One click: recommended settings (keeping resolution and FPS cap), plus Game Boost on for this game with the best power plan. */
+  async function competitive() {
+    const values: GameValues = { ...g.current, ...g.recommended, flags: [...g.recommended.flags] };
+    const ok = await ask(
+      `Competitive setup for ${g.name}?`,
+      `1. Applies the recommended settings (your resolution and FPS cap stay) to:\n${g.configPaths.join('\n')}\n2. Turns Game Boost on, with ${g.name} using the best performance power plan and lowering background apps.\n\nEverything is backed up; Reset and Undo All put it back.`,
+      'Set it up',
+    );
+    if (!ok) return;
+    await act(async () => {
+      const r = await window.api.applyGameProfile(g.id, values);
+      if (!r.ok) return r;
+      const b = (await window.api.getBoost()).settings;
+      const { enabled: _e, perGame, ...base } = b;
+      await window.api.setBoost({ ...b, enabled: true, perGame: { ...perGame, [g.id]: { ...(perGame[g.id] ?? base), plan: true, planGuid: null } } });
+      return { ok: true, message: `${g.name}: competitive settings applied and Game Boost is on for it.` };
+    });
+    await reload();
+  }
+
   const select = (label: string, choices: string[], value: number | undefined, onChange: (n: number) => void) => (
     <label className="flex items-center justify-between gap-3 text-sm text-slate-300">
       {label}
@@ -564,9 +584,16 @@ function Editor({ g, icon, busy, act, ask, reload }: { g: GameView; icon?: strin
           <Badge className="bg-sky-500/15 text-sky-300 ring-sky-500/30">Running</Badge>
         ) : (
           g.status !== 'not-installed' && (
+            <div className="flex gap-2">
+              {editable && (
+                <Button disabled={busy} onClick={() => void competitive()}>
+                  ⚡ Competitive setup
+                </Button>
+              )}
             <Button primary disabled={busy} onClick={() => act(() => window.api.launchGame(g.id))}>
               ▶ Play
             </Button>
+            </div>
           )
         )}
       </div>
@@ -751,6 +778,104 @@ function LibraryPanel({ g, icon, busy, act }: { g: LibraryGame; icon?: string | 
 }
 
 /** Finished Game Boost sessions. */
+/**
+ * Degrees turned per mouse count at sensitivity 1 (the widely used conversion values). Fortnite's is per 1 % of its
+ * slider. Same value = same turn per mouse movement, so CS2 and Apex share sensitivities.
+ */
+const YAW: Array<{ id: string; name: string; yaw: number; unit?: string }> = [
+  { id: 'cs2', name: 'Counter-Strike 2', yaw: 0.022 },
+  { id: 'apex', name: 'Apex Legends', yaw: 0.022 },
+  { id: 'deadlock', name: 'Deadlock', yaw: 0.022 },
+  { id: 'valorant', name: 'VALORANT', yaw: 0.07 },
+  { id: 'ow2', name: 'Overwatch 2', yaw: 0.0066 },
+  { id: 'fortnite', name: 'Fortnite', yaw: 0.005555, unit: '%' },
+];
+
+function SensConverter() {
+  const [from, setFrom] = useState('valorant');
+  const [sens, setSens] = useState(0.4);
+  const [dpi, setDpi] = useState(800);
+  const src = YAW.find((y) => y.id === from)!;
+  const ok = sens > 0 && dpi > 0;
+  const cm360 = ok ? (2.54 * 360) / (dpi * sens * src.yaw) : null;
+  const field = 'rounded-md bg-white/5 px-2 py-1 text-sm text-slate-100 ring-1 ring-white/10';
+  return (
+    <div className="space-y-3 rounded-xl bg-[var(--card)] p-4 ring-1 ring-[var(--line)]">
+      <div>
+        <div className="font-medium text-slate-100">Sensitivity converter</div>
+        <p className="text-sm text-slate-400">Same aim in every game: enter your sensitivity in one, read it for the others.</p>
+      </div>
+      <div className="flex flex-wrap items-end gap-3 text-xs text-slate-400">
+        <label className="flex flex-col gap-1">
+          Game
+          <select value={from} onChange={(e) => setFrom(e.target.value)} className={field}>
+            {YAW.map((y) => (
+              <option key={y.id} value={y.id} className="bg-slate-900">
+                {y.name}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label className="flex flex-col gap-1">
+          Sensitivity{src.unit ? ` (${src.unit})` : ''}
+          <input type="number" step="0.01" min={0} value={sens} onChange={(e) => setSens(Number(e.target.value))} className={clsx(field, 'w-28')} />
+        </label>
+        <label className="flex flex-col gap-1">
+          Mouse DPI
+          <input type="number" step="50" min={0} value={dpi} onChange={(e) => setDpi(Number(e.target.value))} className={clsx(field, 'w-28')} />
+        </label>
+        {cm360 && (
+          <div className="rounded-lg bg-sky-500/10 px-3 py-1.5 text-sky-200 ring-1 ring-sky-500/30">
+            <span className="text-lg font-semibold tabular-nums">{cm360.toFixed(1)}</span> cm / 360° <span className="text-slate-400">({(cm360 / 2.54).toFixed(1)} in)</span>
+          </div>
+        )}
+      </div>
+      {ok && (
+        <ul className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+          {YAW.filter((y) => y.id !== from).map((y) => {
+            const v = (sens * src.yaw) / y.yaw;
+            return (
+              <li key={y.id} className="flex items-center justify-between rounded-lg bg-[var(--card-2)] px-3 py-2 ring-1 ring-[var(--line)]">
+                <span className="text-sm text-slate-300">{y.name}</span>
+                <span className="font-semibold tabular-nums text-slate-100">
+                  {v < 10 ? v.toFixed(3) : v.toFixed(2)}
+                  {y.unit ?? ''}
+                </span>
+              </li>
+            );
+          })}
+        </ul>
+      )}
+      <p className="text-xs text-slate-500">Assumes the same mouse DPI, default field of view and no in-game scope multipliers. Fortnite: set X and Y to the same value.</p>
+    </div>
+  );
+}
+
+/** Average FPS in Game Boost sessions before vs after IcyCleaner first optimized each game (needs the overlay in both). */
+function BeforeAfter({ list, games }: { list: SessionReport[]; games: GameView[] }) {
+  const rows = games.flatMap((g) => {
+    if (!g.optimizedAt) return [];
+    const mine = list.filter((s) => s.game === g.name && s.fpsAvg !== null);
+    const avg = (xs: SessionReport[]) => (xs.length ? Math.round(xs.reduce((a, s) => a + s.fpsAvg!, 0) / xs.length) : null);
+    const before = avg(mine.filter((s) => s.startedAt < g.optimizedAt!));
+    const after = avg(mine.filter((s) => s.startedAt >= g.optimizedAt!));
+    return before && after ? [{ name: g.name, before, after, pct: Math.round(((after - before) / before) * 100) }] : [];
+  });
+  if (!rows.length) return null;
+  return (
+    <ul className="mt-3 grid gap-2 sm:grid-cols-2">
+      {rows.map((r) => (
+        <li key={r.name} className="flex items-center justify-between rounded-lg bg-[var(--card-2)] px-3 py-2 ring-1 ring-[var(--line)]">
+          <span className="text-sm text-slate-300">{r.name}: before → after optimizing</span>
+          <span className="tabular-nums text-slate-100">
+            {r.before} → {r.after} FPS <span className={r.pct >= 0 ? 'text-emerald-300' : 'text-amber-300'}>({r.pct >= 0 ? '+' : ''}{r.pct}%)</span>
+          </span>
+        </li>
+      ))}
+    </ul>
+  );
+}
+
 /** The apps that most often used CPU right after an FPS drop, across all sessions. */
 function Culprits({ list }: { list: SessionReport[] }) {
   const count = new Map<string, number>();
@@ -764,13 +889,19 @@ function Culprits({ list }: { list: SessionReport[] }) {
   );
 }
 
-function Sessions() {
+function Sessions({ games }: { games: GameView[] }) {
   const [list, setList] = useState<SessionReport[] | null>(null);
   useEffect(() => void window.api.sessions().then(setList), []);
-  if (!list?.length) return null;
+  if (!list?.length)
+    return (
+      <div className="rounded-xl bg-[var(--card)] p-4 text-sm text-slate-400 ring-1 ring-[var(--line)]">
+        <div className="font-medium text-slate-100">Session history</div>
+        No Game Boost sessions yet. Turn on Game Boost (and the overlay for FPS), play, and each session shows up here.
+      </div>
+    );
   const v = (n: number | null, unit = '') => (n === null ? '—' : `${n}${unit}`);
   return (
-    <details className="rounded-xl bg-[var(--card)] p-4 ring-1 ring-[var(--line)]">
+    <details open className="rounded-xl bg-[var(--card)] p-4 ring-1 ring-[var(--line)]">
       <summary className="cursor-pointer text-sm font-medium text-slate-200">Session history ({list.length})</summary>
       <p className="mt-1 text-xs text-slate-500">One row per Game Boost session. FPS and temperatures need the overlay to have been on during the game.</p>
       <div className="mt-2 overflow-x-auto">
@@ -806,6 +937,7 @@ function Sessions() {
           </tbody>
         </table>
       </div>
+      <BeforeAfter list={list} games={games} />
       <Culprits list={list} />
       {list.some((s) => s.hot.length) && <p className="mt-2 text-xs text-amber-300/90">Amber = hot enough that the chip may have slowed itself down. Check cooling and dust.</p>}
     </details>
@@ -822,6 +954,7 @@ export function Games({ busy, act, ask }: { busy: boolean; act: Act; ask: Ask })
   const [icons, setIcons] = useState<Record<string, string | null>>({});
   useEffect(() => void window.api.gameIcons().then(setIcons), []);
   useEffect(() => void load(), [load]);
+  const [tab, setTab] = useState<'profiles' | 'boost' | 'performance'>('profiles');
   const [library, setLibrary] = useState<LibraryGame[]>([]);
   const [libIcons, setLibIcons] = useState<Record<string, string | null>>({});
   const loadLibrary = useCallback(async (refresh = false) => {
@@ -866,10 +999,24 @@ export function Games({ busy, act, ask }: { busy: boolean; act: Act; ask: Ask })
           Edits each game's own settings file, only the keys shown. Anti-cheat files are never touched. The game must be closed.
         </p>
       </div>
-      <GameBoost busy={busy} act={act} />
-      <Frametimes busy={busy} />
-      <Sessions />
-      <div className="grid gap-4 md:grid-cols-[19rem_minmax(0,1fr)]">
+      <Tabs
+        tabs={[
+          { id: 'profiles', label: 'Profiles', icon: 'gamepad' },
+          { id: 'boost', label: 'Game Boost & overlay', icon: 'sparkles' },
+          { id: 'performance', label: 'Performance', icon: 'pulse' },
+        ]}
+        value={tab}
+        onChange={setTab}
+      />
+      {tab === 'boost' && <GameBoost busy={busy} act={act} />}
+      {tab === 'performance' && (
+        <>
+          <Sessions games={games ?? []} />
+          <Frametimes busy={busy} />
+          <SensConverter />
+        </>
+      )}
+      <div className={clsx('grid gap-4 md:grid-cols-[19rem_minmax(0,1fr)]', tab !== 'profiles' && 'hidden')}>
         <div className="space-y-2">
           <div className="flex gap-2">
             <input

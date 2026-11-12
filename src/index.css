@@ -174,6 +174,19 @@ input[type='checkbox']:disabled {
   opacity: 0.4;
   cursor: not-allowed;
 }
+/* Page switch: a short fade and rise (App.tsx). */
+@keyframes page-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+}
+@media (prefers-reduced-motion: no-preference) {
+  .page-in {
+    animation: page-in 0.22s ease-out;
+  }
+}
+
 /* Restore point / restart status (App.tsx Activity). */
 @keyframes fadein {
   from {

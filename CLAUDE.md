@@ -27,7 +27,8 @@ Full spec: `docs/SPEC.md`. Work one phase of its "Build order" at a time.
    their required plugins and type packages. Ask before adding anything else, before deleting any file, and before
    changing the stack. No telemetry, accounts or network calls, except the user-approved ones: the latency test and
    DNS benchmark (only when the user presses the button), runtime installs through winget, the NVIDIA driver lookup
-   and download, DDU through winget, and PresentMon from GitHub (approved by the user).
+   and download, DDU through winget, PresentMon from GitHub, the GitHub update check, and the overlay's ping
+   (TCP 1.1.1.1:443 every 2 s, only while the overlay is on) (all approved by the user).
 
 ## Commands
 
@@ -172,5 +173,10 @@ Full spec: `docs/SPEC.md`. Work one phase of its "Build order" at a time.
   Duplicate Finder / Old Files; `cleaner.ts` `isTempDir` (user-temp only cleans a folder named Temp/Tmp).
 - Restore point / restart status: `safety.hooks.activity` -> progress task 'restore-point' / 'restart' -> App `Activity`.
   Game launches from the elevated app go through `runas /trustlevel:0x20000` (unelevated; Riot Client needs it).
+- Home `Checkups` (main `checkups`: shader cache total from the Cleaner's own targets, GPU `driverDate` from the
+  hardware query). Games page tabs: Profiles / Game Boost & overlay / Performance (sessions + `BeforeAfter` from
+  `GameView.optimizedAt`, frametimes, `SensConverter` yaw table). Editor "Competitive setup" = recommended values +
+  per-game Boost. Startup items show event-101 slowdowns (`BootInfo.slowApps[].file`). `library.ts` `ALWAYS_ON_TOOL`
+  keeps always-running Steam software (docks, wallpapers, scalers) out of the library and Game Boost.
 - Hardware detection (~9 s) is cached in `hardware.json` (userData) and refreshed in the background. Start-up reads
   must run in parallel (sequential awaits defeat the batched reads).

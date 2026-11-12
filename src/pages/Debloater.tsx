@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import clsx from 'clsx';
 import type { AppItem, Progress } from '../../shared/types';
-import { Badge, Button, MUTED_BADGE, formatBytes, type Ask } from '../ui';
+import { Badge, Button, MUTED_BADGE, Tabs, formatBytes, type Ask } from '../ui';
 import type { Act } from './General';
 
 type Sort = 'name' | 'size' | 'date' | 'used';
@@ -85,19 +85,14 @@ export function Debloater({ busy, act, ask }: { busy: boolean; act: Act; ask: As
       </div>
 
       <div className="flex flex-wrap items-center gap-2">
-        <div role="tablist" className="flex gap-1">
-          {(['desktop', 'store', 'unused'] as const).map((k) => (
-            <button
-              key={k}
-              role="tab"
-              aria-selected={tab === k}
-              onClick={() => setTab(k)}
-              className={clsx('rounded-md px-3 py-1 text-sm', tab === k ? 'bg-sky-500/15 text-sky-200' : 'text-slate-400 hover:bg-white/5')}
-            >
-              {k === 'desktop' ? 'Desktop apps' : k === 'store' ? 'Store apps' : 'Not used in 6+ months'} ({(apps ?? []).filter((a) => (k === 'unused' ? a.unused : a.kind === k)).length})
-            </button>
-          ))}
-        </div>
+        <Tabs
+          tabs={(['desktop', 'store', 'unused'] as const).map((k) => ({
+            id: k,
+            label: `${k === 'desktop' ? 'Desktop apps' : k === 'store' ? 'Store apps' : 'Not used in 6+ months'} (${(apps ?? []).filter((a) => (k === 'unused' ? a.unused : a.kind === k)).length})`,
+          }))}
+          value={tab}
+          onChange={setTab}
+        />
         <input
           type="search"
           value={filter}

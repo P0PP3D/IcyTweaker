@@ -11,7 +11,7 @@ $cpu = Get-CimInstance Win32_Processor | Select-Object -First 1
 $bios = Get-CimInstance Win32_BIOS
 $board = Get-CimInstance Win32_BaseBoard
 $mem = @(Get-CimInstance Win32_PhysicalMemory | ForEach-Object { @{ speed = $_.Speed; configured = $_.ConfiguredClockSpeed; type = $_.SMBIOSMemoryType; size = $_.Capacity; part = "$($_.PartNumber)".Trim() } })
-$gpus = @(Get-CimInstance Win32_VideoController | ForEach-Object { @{ name = $_.Name; driver = $_.DriverVersion; pnp = $_.PNPDeviceID } })
+$gpus = @(Get-CimInstance Win32_VideoController | ForEach-Object { @{ name = $_.Name; driver = $_.DriverVersion; pnp = $_.PNPDeviceID; driverDate = if ($_.DriverDate) { $_.DriverDate.ToString('yyyy-MM-dd') } else { $null } } })
 $nics = @(Get-CimInstance Win32_NetworkAdapter -Filter "PhysicalAdapter=True AND NetEnabled=True" | ForEach-Object { @{ name = $_.Name; pnp = $_.PNPDeviceID } })
 $tpm = Get-CimInstance -Namespace root/cimv2/Security/MicrosoftTpm -ClassName Win32_Tpm
 $dg = Get-CimInstance -Namespace root/Microsoft/Windows/DeviceGuard -ClassName Win32_DeviceGuard
@@ -49,10 +49,11 @@ export function parseHardware(json: string): HardwareInfo {
     cores: r.cores ?? 0,
     threads: r.threads ?? 0,
     laptop: !!r.battery || arr<number>(r.chassis).some((c) => PORTABLE.has(c)),
-    gpus: arr<{ name: string; driver: string; pnp: string }>(r.gpus).map((g) => ({
+    gpus: arr<{ name: string; driver: string; pnp: string; driverDate?: string | null }>(r.gpus).map((g) => ({
       name: g.name,
       driver: g.driver,
       pnp: g.pnp,
+      driverDate: g.driverDate ?? null,
       vendor: /VEN_10DE/i.test(g.pnp) ? 'NVIDIA' : /VEN_1002/i.test(g.pnp) ? 'AMD' : /VEN_8086/i.test(g.pnp) ? 'Intel' : 'other',
     })),
     nics: arr<{ name: string; pnp: string }>(r.nics),

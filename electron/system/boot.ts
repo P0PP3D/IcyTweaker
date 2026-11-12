@@ -26,10 +26,10 @@ export function parseBoot(json: string, admin: boolean): BootInfo {
   };
   const boots = (r.boots ?? []).filter((b) => b.total > 0);
   // Event 101 repeats per boot; keep each app's worst recent slowdown.
-  const slow = new Map<string, { name: string; degradationMs: number }>();
+  const slow = new Map<string, { name: string; degradationMs: number; file?: string }>();
   for (const s of r.slow ?? []) {
     const name = s.name || s.file;
-    if (name && s.degradation > (slow.get(name)?.degradationMs ?? 0)) slow.set(name, { name, degradationMs: s.degradation });
+    if (name && s.degradation > (slow.get(name)?.degradationMs ?? 0)) slow.set(name, { name, degradationMs: s.degradation, file: s.file || undefined });
   }
   const avg = (xs: number[]) => (xs.length ? Math.round(xs.reduce((a, b) => a + b, 0) / xs.length) : null);
   return {

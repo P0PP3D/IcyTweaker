@@ -8,6 +8,11 @@ import { steamLibraries, type GameEnv, type LaunchTarget } from './games';
 
 /** Steam entries that are tools, not games. */
 const NOT_A_GAME = /redistributable|steamworks|proton|steam linux runtime|steamvr|dedicated server|\bsdk\b|soundtrack|benchmark tool/i;
+/**
+ * Steam "Software" that runs all the time (docks, wallpapers, overlays, scalers). Listed as games they'd keep Game
+ * Boost on permanently. Steam's app type is only in its binary appinfo cache, so these are named.
+ */
+const ALWAYS_ON_TOOL = /^(wallpaper engine|lossless scaling|mydockfinder|crosshair x|fps monitor|soundpad|voicemod|vtube studio|rainmeter|groupy|start11|fences|displayfusion|translucenttb|deskscapes|cursor fx|rivatuner|msi afterburner|obs studio|streamlabs|discord|nvidia broadcast|aseprite|blender|krita|rpg maker.*|game ?maker.*|clip studio paint.*|sound ?forge.*|fl studio.*|ableton.*|3dmark|pcmark.*|superposition benchmark|heaven benchmark|cinebench|aida64.*)$/i;
 /** Folders that hold installers, runtimes and anti-cheat, never the game itself. */
 const SKIP_DIR = /^(setup|tools|sdk|streamingassets|_commonredist|commonredist|redist|redistributables?|directx|vcredist|dotnet|support|installers?|easyanticheat|battleye|__installer|prerequisites|thirdparty|crashreport.*|engine)$/i;
 
@@ -50,7 +55,7 @@ export async function scanLibrary(env: GameEnv): Promise<LibraryEntry[]> {
       if (!/^appmanifest_\d+\.acf$/i.test(f)) continue;
       const acf = await readFile(path.join(apps, f), 'utf8').catch(() => '');
       const [id, name, dir] = [acfValue(acf, 'appid'), acfValue(acf, 'name'), acfValue(acf, 'installdir')];
-      if (!id || !name || !dir || NOT_A_GAME.test(name)) continue;
+      if (!id || !name || !dir || NOT_A_GAME.test(name) || ALWAYS_ON_TOOL.test(name.trim())) continue;
       const exe = await mainExe(path.join(apps, 'common', dir));
       if (exe) out.push({ id: `steam-${id}`, name, source: 'steam', exe, launch: { url: `steam://rungameid/${id}` } });
     }
