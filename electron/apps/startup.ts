@@ -1,10 +1,11 @@
-// Startup manager: what launches at sign-in, turned on or off the way Task Manager does it, through the
-// StartupApproved flags (REG_BINARY; first byte odd = disabled). The Run entries themselves are never deleted,
-// so turning an item back on is always possible, and every flag change is backed up (Undo All restores it).
+// Startup manager: what launches at sign-in (Run keys, startup folders, and third-party scheduled tasks with a
+// sign-in trigger), turned on or off the way Task Manager does it: StartupApproved flags (REG_BINARY; first byte odd =
+// disabled) for Run/folder items, the task's own enabled state for tasks. Every change is backed up (Undo All).
+// Delete (on request): Run values through the safety layer (restorable), folder shortcuts to the Recycle Bin.
 import { readdir } from 'node:fs/promises';
 import path from 'node:path';
 import type { StartupItemView } from '../../shared/types';
-import { REG_EXE, binary, type Hive, type SettingRef } from '../system/adapter';
+import { POWERSHELL_EXE, REG_EXE, binary, type Hive, type SettingRef } from '../system/adapter';
 import type { Safety } from '../system/safety';
 
 const RUN = 'Software\\Microsoft\\Windows\\CurrentVersion\\Run';
@@ -47,6 +48,28 @@ const enabledFlag = (v: unknown) => {
   return hex.length < 2 || (parseInt(hex.slice(0, 2), 16) & 1) === 0;
 };
 
+/** Third-party scheduled tasks with a sign-in trigger. Read-only (PowerShell, output as base64 JSON). */
+export const LOGON_TASKS_SCRIPT =
+  "$t = @(Get-ScheduledTask | Where-Object { $_.TaskPath -notlike '\\Microsoft\\*' -and $_.TaskPath -notlike '\\IcyCleaner\\*' -and @($_.Triggers | Where-Object { $_.CimClass.CimClassName -eq 'MSFT_TaskLogonTrigger' }).Count } | " +
+  "ForEach-Object { $a = @($_.Actions)[0]; [pscustomobject]@{ path = $_.TaskPath + $_.TaskName; enabled = ($_.State -ne 'Disabled'); command = (\"$($a.Execute) $($a.Arguments)\").Trim() } }); " +
+  '[Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes((ConvertTo-Json -InputObject $t -Compress)))';
+
+export function parseLogonTasks(base64: string): Array<{ path: string; enabled: boolean; command: string }> {
+  const json = Buffer.from(base64.trim(), 'base64').toString('utf8').replace(/[\u0000-\u001f]/g, ' ').trim();
+  if (!json) return [];
+  const list = JSON.parse(json) as Array<{ path?: unknown; enabled?: unknown; command?: unknown }>;
+  return list.filter((t) => typeof t.path === 'string' && /^\\/.test(t.path)).map((t) => ({ path: t.path as string, enabled: t.enabled === true, command: String(t.command ?? '') }));
+}
+
+async function logonTasks(safety: Safety) {
+  const out = await safety.adapter.query(POWERSHELL_EXE, ['-NoProfile', '-NonInteractive', '-Command', LOGON_TASKS_SCRIPT], 60_000).catch(() => '');
+  try {
+    return parseLogonTasks(out);
+  } catch {
+    return [];
+  }
+}
+
 export function createStartup(safety: Safety, sources: Source[]) {
   const flagRef = (s: Source, name: string): SettingRef => ({ kind: 'reg', hive: s.hive, key: s.approved, name });
 
@@ -65,15 +88,37 @@ export function createStartup(safety: Safety, sources: Source[]) {
             location: s.location,
             enabled: enabledFlag(await safety.read(flagRef(s, e.name))),
             requiresAdmin: s.hive === 'HKLM',
+            kind: s.key ? 'registry' : 'folder',
           });
         }
       }
+      // Scheduled tasks that start at sign-in (outside Windows' own \Microsoft\ tasks and IcyTweaker's).
+      for (const t of await logonTasks(safety)) {
+        items.push({ id: `task|${t.path}`, name: t.path.split('\\').pop() || t.path, command: t.command, location: `Scheduled task: ${t.path}`, enabled: t.enabled, requiresAdmin: true, kind: 'task' });
+      }
       return items;
+    },
+
+    /**
+     * Removes an entry (only items from `list()`). Registry Run values: deleted through the safety layer, so the backup
+     * (and Undo All) can put them back. Startup-folder shortcuts: main moves the returned file to the Recycle Bin.
+     * Tasks are not deleted (their definition can't be backed up): turn them off instead.
+     */
+    async remove(id: string): Promise<{ trash?: string }> {
+      const [sid, ...rest] = id.split('|');
+      const name = rest.join('|');
+      const s = sources.find((x) => x.id === sid);
+      if (!s) throw new Error('Scheduled tasks can only be turned off, not deleted.');
+      if (s.folder) return { trash: path.join(s.folder, name) };
+      await safety.set({ kind: 'reg', hive: s.hive, key: s.key!, name }, null);
+      if ((await safety.read(flagRef(s, name))) !== null) await safety.set(flagRef(s, name), null);
+      return {};
     },
 
     /** Only items from `list()`; main checks the id. */
     async setEnabled(id: string, enabled: boolean) {
       const [sid, ...rest] = id.split('|');
+      if (sid === 'task') return safety.set({ kind: 'task', path: rest.join('|') }, enabled ? 'enabled' : 'disabled');
       const s = sources.find((x) => x.id === sid);
       if (!s) throw new Error('Unknown startup source.');
       const ref = flagRef(s, rest.join('|'));

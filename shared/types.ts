@@ -26,6 +26,8 @@ export interface TweakMeta {
   group?: string;
   /** Process names (lower case) that must not be running while it changes, e.g. an app that rewrites its settings on exit. */
   needsClosed?: string[];
+  /** Shown instead of "Access is denied" when Windows protects the setting from other programs. */
+  deniedHint?: string;
   /** Hardware it is meant for: laptop false = desktops only; ssd true = SSDs only. */
   hardware?: { laptop?: boolean; ssd?: boolean };
   /** Anti-cheats that may object, and how. */
@@ -66,6 +68,12 @@ export interface PresetMeta {
   /** 'apply' applies the listed tweaks; 'revert' reverts them. '*' = every tweak. */
   action: 'apply' | 'revert';
   tweakIds: string[];
+  /**
+   * Rough expected change, e.g. "+3–10% FPS". Not measured on the user's PC: a conservative range for these kinds of
+   * changes, shown as an estimate. Frametime capture measures the real before/after.
+   */
+  estimate?: string;
+  estimateNote?: string;
 }
 
 export interface Stats {
@@ -515,6 +523,8 @@ export interface StartupItemView {
   location: string;
   enabled: boolean;
   requiresAdmin: boolean;
+  /** registry: a Run value; folder: a Startup-folder shortcut; task: a scheduled task with a sign-in trigger. */
+  kind: 'registry' | 'folder' | 'task';
 }
 
 export interface RuntimeView {
@@ -687,6 +697,30 @@ export interface DirEntry {
   name: string;
   size: number;
   isDir: boolean;
+}
+
+/** Focus Mode: what it stops (service names) and closes (exe names) while on. */
+export interface FocusSettings {
+  services: string[];
+  apps: string[];
+  /** The user's own programs to close (exe names). */
+  custom: string[];
+  /** Never closed, whatever the lists say. */
+  exceptions: string[];
+  /** Reopen the closed apps when Focus Mode turns off. */
+  reopen: boolean;
+}
+/** While Focus Mode is on: what it actually stopped and closed. */
+export interface FocusState {
+  since: string;
+  services: string[];
+  apps: Array<{ name: string; path: string }>;
+}
+export interface FocusInfo {
+  settings: FocusSettings;
+  state: FocusState | null;
+  services: Array<{ name: string; label: string; note: string }>;
+  apps: Array<{ exe: string; label: string }>;
 }
 
 /** One item in the Recycle Bin. */
@@ -877,6 +911,10 @@ export interface OptimizerApi {
   findRoots(): Promise<string[]>;
   /** A Steam library game's header art (data URL) from Steam's local cache; null = none. */
   libraryArt(id: string): Promise<string | null>;
+  focusInfo(): Promise<FocusInfo>;
+  setFocusSettings(s: FocusSettings): Promise<FocusInfo>;
+  /** Turn Focus Mode on or off. */
+  setFocus(on: boolean): Promise<ActionReport>;
   /** Everything in the Recycle Bin, newest deleted first. */
   recycleItems(): Promise<{ items: RecycleItem[]; error?: string }>;
   /** Last results of the Disk Analyzer, finders and cleaner scans. */
@@ -899,6 +937,10 @@ export interface OptimizerApi {
   setBoost(settings: BoostState['settings']): Promise<BoostState>;
   listStartup(): Promise<{ items: StartupItemView[]; error?: string }>;
   setStartupItem(id: string, enabled: boolean): Promise<ActionReport>;
+  /** Many at once (restore point first). */
+  setStartupItems(ids: string[], enabled: boolean): Promise<ActionReport>;
+  /** Delete one entry: registry values are backed up (Undo All), folder shortcuts go to the Recycle Bin, tasks can't be deleted. */
+  removeStartupItem(id: string): Promise<ActionReport>;
   runtimes(): Promise<RuntimeView[]>;
   /** Installs through winget (downloads from Microsoft). Behind a restore point. */
   installRuntimes(ids: string[]): Promise<{ report: ActionReport; results: RuntimeResult[] }>;

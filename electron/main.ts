@@ -20,6 +20,7 @@ import { buildConfig, fromShareCode, parseConfig, toShareCode, type ConfigFile }
 import { bootInfo } from './system/boot';
 import { displayModes, monitors } from './system/monitors';
 import { findDuplicates, findOldFiles, keptOut } from './cleaner/finder';
+import { DEFAULT_FOCUS, FOCUS_APPS, FOCUS_SERVICES, createFocus, validateFocus } from './games/focus';
 import { TRACES as PRIVACY_TRACES, createPrivacy } from './cleaner/privacy';
 import { restoreDefender } from './system/uninstall';
 import { createDriverJob, driverInfo } from './resources/driver';
@@ -254,6 +255,7 @@ app.whenReady().then(async () => {
     let settings = {
       onboarded: saved.onboarded === true,
       windowsBuild: (typeof saved.windowsBuild === 'string' ? saved.windowsBuild : null) as string | null,
+      focus: validateFocus(saved.focus) ?? DEFAULT_FOCUS,
       /** The command the Start with Windows task was last pointed at. */
       startCmd: (typeof saved.startCmd === 'string' ? saved.startCmd : null) as string | null,
       boost: { ...DEFAULT_BOOST, ...(saved.boost as Partial<BoostSettings> | undefined) },
@@ -309,6 +311,17 @@ app.whenReady().then(async () => {
       updateTray();
     }, () => settings.app.laptopProfile && powerMonitor.isOnBatteryPower());
 
+    // Focus Mode (page and tray): non-essential services stopped and background apps closed until turned off. A session
+    // left over from a crash or restart is put back first.
+    const focus = createFocus(adapter, safety.dataDir, (a, t, ok, d) => safety.log(a, t, ok, d));
+    void focus.resume().then((m) => m && notify('Focus Mode', 'Started again what the last Focus Mode session had stopped.'), () => {});
+    async function setFocusMode(turnOn: boolean): Promise<{ ok: boolean; message: string }> {
+      if (turnOn && live && !admin) return { ok: false, message: 'Focus Mode needs administrator (it stops Windows services). Relaunch as admin first.' };
+      const message = turnOn ? await focus.on(settings.focus) : await focus.off(settings.focus.reopen);
+      updateTray();
+      return { ok: true, message };
+    }
+
     // System tray: open, Game Boost switch, quit.
     const trayIconPath = path.join(__dirname, '..', 'dist', 'icon.png');
     const tray = new Tray(nativeImage.createFromPath(trayIconPath).resize({ width: 16, height: 16 }));
@@ -330,6 +343,12 @@ app.whenReady().then(async () => {
               await boost.set(settings.boost);
               updateTray();
             },
+          },
+          {
+            label: 'Focus Mode',
+            type: 'checkbox',
+            checked: !!focus.state(),
+            click: (item) => void setFocusMode(item.checked).then((r) => notify('Focus Mode', r.message), (e: Error) => notify('Focus Mode', e.message)),
           },
           { label: 'Show / hide overlay', click: () => void toggleOverlay().catch(() => {}) },
           {
@@ -377,11 +396,15 @@ app.whenReady().then(async () => {
     }, 10_000); // a game is picked up within 10 s; each check starts tasklist, so not more often
     let quitting = false;
     app.on('before-quit', (e) => {
-      if (quitting || !boost.state().active) return;
-      e.preventDefault(); // end the session (power plan, priorities) before exiting
+      if (quitting || (!boost.state().active && !focus.state())) return;
+      e.preventDefault(); // end the session (power plan, priorities) and Focus Mode (services) before exiting
       quitting = true;
       clearInterval(boostTimer);
-      void boost.end().finally(() => app.quit());
+      void boost
+        .end()
+        .then(() => (focus.state() ? focus.off(false) : null))
+        .catch(() => {})
+        .finally(() => app.quit());
     });
 
     // Laptop profile: Balanced on battery, back to the previous plan on AC (through the safety layer: Undo All covers it).
@@ -805,7 +828,9 @@ app.whenReady().then(async () => {
       async appIcons() {
         const files = await debloater.iconFiles();
         const load = async (file: string) => {
-          const img = /\.png$/i.test(file) ? nativeImage.createFromPath(file) : await app.getFileIcon(file, { size: 'normal' }).catch(() => null);
+          // Image files load as themselves: getFileIcon on an .ico returns the generic "file" icon (e.g. every Steam
+          // game, whose uninstall entry points at steam\games\<hash>.ico).
+          const img = /\.(png|ico)$/i.test(file) ? nativeImage.createFromPath(file) : await app.getFileIcon(file, { size: 'normal' }).catch(() => null);
           appIconCache.set(file, img && !img.isEmpty() ? img.resize({ width: 32, height: 32, quality: 'best' }).toDataURL() : null);
         };
         await Promise.all([...new Set([...files.values()])].filter((f): f is string => !!f && !appIconCache.has(f)).map(load));
@@ -1350,15 +1375,37 @@ app.whenReady().then(async () => {
       findRoots: async () => analyzeRoots,
       lastScans: async () => lastScans,
 
+      focusInfo: async () => ({
+        settings: settings.focus,
+        state: focus.state(),
+        services: FOCUS_SERVICES.map(({ name, label, note }) => ({ name, label, note })),
+        apps: FOCUS_APPS.map(({ exe, label }) => ({ exe, label })),
+      }),
+
+      async setFocusSettings(next: unknown) {
+        const n = validateFocus(next);
+        if (n) {
+          settings = { ...settings, focus: n };
+          await saveSettings();
+        }
+        return { settings: settings.focus, state: focus.state(), services: FOCUS_SERVICES.map(({ name, label, note }) => ({ name, label, note })), apps: FOCUS_APPS.map(({ exe, label }) => ({ exe, label })) };
+      },
+
+      setFocus: async (on: unknown) => (typeof on === 'boolean' ? setFocusMode(on) : { ok: false, message: 'Invalid request.' }),
+
       /** What's in the Recycle Bin (all drives), through the Windows shell. Read-only. */
       async recycleItems() {
         const script =
           "$o = @((New-Object -ComObject Shell.Application).NameSpace(10).Items() | ForEach-Object { $d = $_.ExtendedProperty('System.Recycle.DateDeleted'); $s = $_.ExtendedProperty('System.Size'); " +
-          "[pscustomobject]@{ name = $_.Name; from = [string]$_.ExtendedProperty('System.Recycle.DeletedFrom'); deleted = $(if ($d) { ([datetime]$d).ToString('o') } else { $null }); size = $(if ($s) { [int64]$s } else { 0 }); folder = [bool]$_.IsFolder } }); " +
-          'ConvertTo-Json -InputObject $o -Compress';
+          "[pscustomobject]@{ name = $_.Name; from = [string]$_.ExtendedProperty('System.Recycle.DeletedFrom'); deleted = $(if ($d) { ([datetime]$d).ToString('yyyy-MM-ddTHH:mm:ss') + 'Z' } else { $null }); size = $(if ($s) { [int64]$s } else { 0 }); folder = [bool]$_.IsFolder } }); " +
+          // DateDeleted comes back in UTC without saying so (it read hours ahead of local time), hence the 'Z'.
+          // Sent as base64 of UTF-8: names with non-ASCII characters came through the console code page garbled
+          // (raw control characters broke JSON.parse).
+          '[Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes((ConvertTo-Json -InputObject $o -Compress)))';
         try {
           const out = (await adapter.query(POWERSHELL_EXE, ['-NoProfile', '-NonInteractive', '-Command', script], 60_000)).trim();
-          const list = out ? (JSON.parse(out) as RecycleItem[]) : [];
+          const json = Buffer.from(out, 'base64').toString('utf8').replace(/[\u0000-\u001f]/g, ' ');
+          const list = json.trim() ? (JSON.parse(json) as RecycleItem[]) : [];
           return { items: list.sort((a, b) => (b.deleted ?? '').localeCompare(a.deleted ?? '')) };
         } catch (err) {
           return { items: [], error: `Could not read the Recycle Bin: ${(err as Error).message}` };
@@ -1472,6 +1519,47 @@ app.whenReady().then(async () => {
             return { ok: true, message: `${name} ${enabled ? 'will start' : 'no longer starts'} with Windows${live ? '' : ' (dry-run: nothing written)'}.` };
           } catch (err) {
             await safety.log('startup-item', name, false, (err as Error).message);
+            return { ok: false, message: `${name}: ${(err as Error).message}` };
+          }
+        });
+      },
+
+      /** Turn many startup items on or off at once: a bulk change, so behind a restore point. */
+      async setStartupItems(ids: unknown, enabled: unknown) {
+        const list = Array.isArray(ids) ? ids : [];
+        if (!list.length || typeof enabled !== 'boolean' || list.some((id) => typeof id !== 'string' || !startupIds.has(id))) return { ok: false, message: 'Invalid request.' };
+        const allowed = (list as string[]).filter((id) => !(live && startupIds.get(id) && !admin));
+        return withRestorePoint(`${enabled ? 'Enable' : 'Disable'} startup apps`, async () => {
+          let done = 0;
+          const failed: string[] = [];
+          for (const id of allowed) {
+            await startup.setEnabled(id, enabled).then(() => done++, (e: Error) => failed.push(`${id.split('|').slice(1).join('|')}: ${e.message}`));
+          }
+          await safety.log('startup-items', `${enabled ? 'enable' : 'disable'} ${allowed.length}`, failed.length === 0, failed.join(' | ') || undefined);
+          const skipped = list.length - allowed.length;
+          return {
+            ok: failed.length === 0,
+            message: `${done} item(s) ${enabled ? 'turned on' : 'turned off'}${live ? '' : ' (dry-run: nothing written)'}.${skipped ? ` ${skipped} need administrator.` : ''}${failed.length ? ` Failed: ${failed.join('; ')}` : ''}`,
+          };
+        });
+      },
+
+      /** Delete one startup entry (registry: backed up, restorable; folder shortcut: Recycle Bin; tasks: refused). */
+      async removeStartupItem(id: unknown) {
+        if (typeof id !== 'string' || !startupIds.has(id)) return { ok: false, message: 'Invalid request.' };
+        if (live && startupIds.get(id) && !admin) return { ok: false, message: 'This item is set for all users; deleting it needs administrator.' };
+        const name = id.split('|').slice(1).join('|');
+        return serial(async () => {
+          try {
+            const r = await startup.remove(id);
+            if (r.trash) await adapter.trash(r.trash);
+            await safety.log('startup-remove', name, true, live ? undefined : 'dry-run');
+            return {
+              ok: true,
+              message: `${name.replace(/\.lnk$/i, '')} removed from startup${live ? '' : ' (dry-run: nothing changed)'}. ${r.trash ? 'The shortcut is in the Recycle Bin.' : 'Undo all changes can put it back.'}`,
+            };
+          } catch (err) {
+            await safety.log('startup-remove', name, false, (err as Error).message);
             return { ok: false, message: `${name}: ${(err as Error).message}` };
           }
         });

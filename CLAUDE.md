@@ -70,8 +70,10 @@ Full spec: `docs/SPEC.md`. Work one phase of its "Build order" at a time.
   `app.getFileIcon`; not installed = initials tile.
 - `electron/apps/apps.ts`: App Optimizer cards (tweaks, `page: 'apps'`). `needsClosed` makes the engine refuse
   while that process runs. File-based cards exist only when the app's settings file does (`AppPaths`).
-- `electron/apps/startup.ts`: startup manager. Lists Run keys and startup folders (read-only); on/off only via the
-  StartupApproved REG_BINARY flag (low bit of byte 0 = off), backed up. Run entries are never deleted.
+- `electron/apps/startup.ts`: startup manager (Startup Apps page, replaced the Processes page). Run keys, startup folders and
+  third-party sign-in scheduled tasks. On/off via the StartupApproved REG_BINARY flag (low bit of byte 0 = off) or the
+  task's state, backed up; bulk on/off behind a restore point. Delete (owner's request): Run values through the safety
+  layer (Undo All restores), folder shortcuts to the Recycle Bin, tasks refused (can't be backed up).
 - `electron/resources/runtimes.ts`: runtime installer through winget (IDs checked with `winget show`). Dry-run
   records the commands. winget is an app execution alias: check it with `lstat`, not `existsSync`.
 - `electron/network/tests.ts`: latency test and DNS benchmark, the app's only network calls (user-started).
@@ -198,5 +200,10 @@ Full spec: `docs/SPEC.md`. Work one phase of its "Build order" at a time.
   revert removes only its own `name=1;` part), power throttling, fast startup, startup delay, background apps,
   menu delay, Fault Tolerant Heap, WER policy. Boost `quietNotifications` = `NOC_GLOBAL_SETTING_TOASTS_ENABLED` 0 during play
   (verify: applies without sign-out). Game flag `borderless` (rival of `fullscreen`; validateValues refuses both).
+- Focus Mode (`games/focus.ts`, page + tray): stops running FOCUS_SERVICES (never CRITICAL) and closes chosen apps
+  (CloseMainWindow, then Stop-Process after 3 s); state in `focus-state.json` so `resume()` restarts services after a
+  crash; quitting turns it off. Settings `settings.focus`. Presets carry `estimate`/`estimateNote`: conservative ranges,
+  labelled as estimates (not measured). `TweakMeta.deniedHint` replaces Access-is-denied for Windows-protected settings
+  (Widgets: UCPD; don't work around it). Debloater .ico icons load with nativeImage (getFileIcon gives a blank).
 - Hardware detection (~9 s) is cached in `hardware.json` (userData) and refreshed in the background. Start-up reads
   must run in parallel (sequential awaits defeat the batched reads).

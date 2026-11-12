@@ -194,6 +194,8 @@ export function createEngine(o: {
         await (action === 'apply' ? t.apply(safety, option) : t.revert(safety));
       } catch (err) {
         error = errText(err);
+        // Windows-protected settings refuse every other program, even as administrator: say what to do instead.
+        if (t.deniedHint && /access is denied/i.test(error)) error = t.deniedHint;
       }
     }
     await safety.log(action, t.id, error === null, error ?? undefined);

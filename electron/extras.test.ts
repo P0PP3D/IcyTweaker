@@ -2,6 +2,8 @@
 // Fake adapter and ./.test-tmp/extras only; nothing written to Windows.
 import { mkdir, rm, writeFile } from 'node:fs/promises';
 import { scanLibrary } from './games/library';
+import { DEFAULT_FOCUS, createFocus, validateFocus } from './games/focus';
+import { createStartup, parseLogonTasks, startupSources } from './apps/startup';
 import { parseBoot } from './system/boot';
 import path from 'node:path';
 import { afterAll, describe, expect, it } from 'vitest';
@@ -207,6 +209,53 @@ describe('borderless windowed and Do Not Disturb', () => {
     await boost.tick();
     expect(await fake.read(ref)).toBeNull(); // absent before = notifications on
     expect(safety.backupCount()).toBe(0);
+  });
+});
+
+describe('Focus Mode', () => {
+  it('validates lists: known services only, never Windows-critical ones or core programs', () => {
+    const v = validateFocus({ services: ['SysMain', 'RpcSs', 'Nope'], apps: ['OneDrive.exe', 'explorer.exe', 'bad;rm.exe'], custom: ['obs64.exe'], exceptions: ['discord.exe'], reopen: true })!;
+    expect(v.services).toEqual(['SysMain']);
+    expect(v.apps).toEqual(['onedrive.exe']);
+    expect(v.custom).toEqual(['obs64.exe']);
+    expect(validateFocus({ services: [] })).toBeNull();
+  });
+  it('stops only running services, starts exactly those again, and a leftover session is put back on resume', async () => {
+    const running = new Set(['SysMain', 'WSearch']);
+    const fake = memoryAdapter(undefined, async (_f, args) => (args[0] === 'query' && running.has(args[1]) ? 'STATE              : 4  RUNNING' : 'STATE              : 1  STOPPED'));
+    const d = dir();
+    await mkdir(d, { recursive: true });
+    const log = async () => {};
+    const f = createFocus(fake, d, log);
+    await f.on({ ...DEFAULT_FOCUS, services: ['SysMain', 'WSearch', 'Spooler'], apps: [], custom: [] });
+    expect(f.state()?.services).toEqual(['SysMain', 'WSearch']);
+    expect(fake.commands.filter((c) => c[1] === 'stop').map((c) => c[2])).toEqual(['SysMain', 'WSearch']);
+    // Crash: a new instance finds the state file and starts the services again.
+    const again = createFocus(fake, d, log);
+    expect(await again.resume()).toMatch(/2 service\(s\) started again/);
+    expect(fake.commands.filter((c) => c[1] === 'start').map((c) => c[2])).toEqual(['WSearch', 'SysMain']);
+    expect(again.state()).toBeNull();
+    expect(await createFocus(fake, d, log).resume()).toBeNull();
+  });
+});
+
+describe('startup apps', () => {
+  it('reads sign-in tasks from base64 JSON and ignores junk', () => {
+    const b64 = Buffer.from(JSON.stringify([{ path: '\\ASUS\\Agent', enabled: true, command: 'C:\\a.exe' }, { path: 'nope' }])).toString('base64');
+    expect(parseLogonTasks(b64)).toEqual([{ path: '\\ASUS\\Agent', enabled: true, command: 'C:\\a.exe' }]);
+    expect(parseLogonTasks('')).toEqual([]);
+  });
+  it('deleting a Run entry is backed up (Undo All brings it back); tasks are refused', async () => {
+    const fake = memoryAdapter();
+    const run = { kind: 'reg' as const, hive: 'HKCU' as const, key: 'Software\\Microsoft\\Windows\\CurrentVersion\\Run', name: 'Spotify' };
+    await fake.write(run, sz('C:\\spotify.exe'));
+    const safety = await createSafety(fake, dir());
+    const s = createStartup(safety, startupSources({ APPDATA: 'C:\\x', ProgramData: 'C:\\y' }));
+    await s.remove('hkcu-run|Spotify');
+    expect(await fake.read(run)).toBeNull();
+    await safety.undoAll();
+    expect(await fake.read(run)).toEqual(sz('C:\\spotify.exe'));
+    await expect(s.remove('task|\\ASUS\\Agent')).rejects.toThrow(/only be turned off/);
   });
 });
 

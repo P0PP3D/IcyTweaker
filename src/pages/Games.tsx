@@ -94,7 +94,7 @@ function ResolutionPresets({ width, height, onPick, disabled }: { width?: number
           <p className="min-w-0 flex-1 text-xs text-slate-400">
             Stretched: also turn on Fullscreen below, and in NVIDIA Control Panel → Adjust desktop size and position pick <b>Full-screen</b> with scaling on <b>GPU</b> (AMD: GPU Scaling on, Full panel). Otherwise you get black bars.
           </p>
-          <Button disabled={disabled} onClick={() => void window.api.openShortcut('nvidia-control-panel')}>
+          <Button disabled={disabled} onClick={() => void window.api.openShortcut('nvidia-control-panel').then((r) => !r.ok && alert(r.message))}>
             Open NVIDIA Control Panel
           </Button>
         </div>
@@ -556,26 +556,6 @@ function Editor({ g, icon, busy, act, ask, reload, onPlay }: { g: GameView; icon
     await reload();
   }
 
-  /** One click: recommended settings (keeping resolution and FPS cap), plus Game Boost on for this game with the best power plan. */
-  async function competitive() {
-    const values: GameValues = { ...g.current, ...g.recommended, flags: [...g.recommended.flags] };
-    const ok = await ask(
-      `Competitive setup for ${g.name}?`,
-      `1. Applies the recommended settings (your resolution and FPS cap stay) to:\n${g.configPaths.join('\n')}\n2. Turns Game Boost on, with ${g.name} using the best performance power plan and lowering background apps.\n\nEverything is backed up; Reset and Undo All put it back.`,
-      'Set it up',
-    );
-    if (!ok) return;
-    await act(async () => {
-      const r = await window.api.applyGameProfile(g.id, values);
-      if (!r.ok) return r;
-      const b = (await window.api.getBoost()).settings;
-      const { enabled: _e, perGame, ...base } = b;
-      await window.api.setBoost({ ...b, enabled: true, perGame: { ...perGame, [g.id]: { ...(perGame[g.id] ?? base), plan: true, planGuid: null } } });
-      return { ok: true, message: `${g.name}: competitive settings applied and Game Boost is on for it.` };
-    });
-    await reload();
-  }
-
   const select = (label: string, choices: string[], value: number | undefined, onChange: (n: number) => void) => (
     <label className="flex items-center justify-between gap-3 text-sm text-slate-300">
       {label}
@@ -625,11 +605,6 @@ function Editor({ g, icon, busy, act, ask, reload, onPlay }: { g: GameView; icon
         ) : (
           g.status !== 'not-installed' && (
             <div className="flex gap-2">
-              {editable && (
-                <Button disabled={busy} onClick={() => void competitive()}>
-                  ⚡ Competitive setup
-                </Button>
-              )}
             <Button primary disabled={busy} onClick={() => onPlay()}>
               ▶ Play
             </Button>

@@ -623,7 +623,16 @@ export const generalTweaks: Tweak[] = [
   ),
 
   regDwordTweak(
-    meta({ id: 'widgets-off', name: 'Widgets Off', category: 'system', description: 'Turns off the Widgets board and its news feed (policy).', builds: { min: 22000 } }),
+    meta({
+      id: 'widgets-off',
+      name: 'Widgets Off',
+      category: 'system',
+      description: 'Turns off the Widgets board and its news feed (policy).',
+      builds: { min: 22000 },
+      // Newer Windows 11 builds protect this setting (User Choice Protection driver); IcyTweaker doesn't work around it.
+      deniedHint:
+        'Windows protects this setting from other programs on your version, so IcyTweaker can\'t change it. Turn Widgets off yourself: Settings > Personalization > Taskbar > Widgets. To remove Widgets entirely, uninstall "Windows Web Experience Pack" on the Debloating page.',
+    }),
     { hive: 'HKLM', key: 'SOFTWARE\\Policies\\Microsoft\\Dsh', name: 'AllowNewsAndInterests', enabled: 0, defaultValue: null },
   ),
 

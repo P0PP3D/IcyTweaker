@@ -15,7 +15,6 @@ const ICON: Record<string, IconName> = {
 };
 
 export function Presets({ state, busy, act }: { state: AppState; busy: boolean; act: (fn: () => Promise<ActionReport>) => void }) {
-  const name = (id: string) => state.tweaks.find((t) => t.id === id)?.name ?? id;
   return (
     <section className="space-y-3">
       <div>
@@ -36,10 +35,21 @@ export function Presets({ state, busy, act }: { state: AppState; busy: boolean; 
                 >
                   <Icon name={ICON[p.id] ?? 'layers'} className="h-5 w-5" />
                 </span>
-                <div className="font-medium text-slate-100">{p.name}</div>
+                <div className="min-w-0 flex-1 font-medium text-slate-100">{p.name}</div>
+                {p.estimate && (
+                  <span
+                    title={`${p.estimateNote ?? ''} Estimated range, not measured on your PC.`}
+                    className={clsx(
+                      'shrink-0 rounded-full px-2.5 py-0.5 text-xs font-semibold ring-1',
+                      revert ? 'bg-white/5 text-slate-300 ring-white/10' : 'bg-emerald-500/10 text-emerald-300 ring-emerald-500/30',
+                    )}
+                  >
+                    {p.estimate}
+                  </span>
+                )}
               </div>
               <p className="text-sm text-slate-400">{p.description}</p>
-              <p className="text-xs text-slate-500">{p.tweakIds.includes('*') ? 'Every tweak on every page' : p.tweakIds.map(name).join(' · ')}</p>
+              {p.estimateNote && <p className="text-xs text-slate-500">{p.estimateNote}</p>}
               <div className="mt-auto pt-1">
                 <Button primary={!revert} disabled={busy} onClick={() => act(() => window.api.applyPreset(p.id))}>
                   {revert ? 'Revert these' : 'Apply preset'}
@@ -49,6 +59,10 @@ export function Presets({ state, busy, act }: { state: AppState; busy: boolean; 
           );
         })}
       </ul>
+      <p className="text-xs text-slate-500">
+        FPS figures are estimated ranges for these kinds of changes, not measurements of your PC: the real gain depends on your CPU, graphics card and game. To measure it, use
+        Frametime capture on the Game Profiles page (Performance tab) before and after applying a preset.
+      </p>
     </section>
   );
 }

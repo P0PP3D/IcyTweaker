@@ -3,7 +3,8 @@ import clsx from 'clsx';
 import type { ActionReport, AppState, DriverJobView, Risk } from '../shared/types';
 import { Settings } from './pages/Settings';
 import { Devices } from './pages/Devices';
-import { Processes } from './pages/Processes';
+import { Startup } from './pages/Startup';
+import { Focus } from './pages/Focus';
 import { Duplicates, OldFiles, Privacy } from './pages/Finder';
 import { Onboarding } from './Onboarding';
 import { Debloater } from './pages/Debloater';
@@ -25,7 +26,7 @@ import { Icon, Logo, type IconName } from './icons';
 import { Banner, Button, ConfirmDialog, TweakRow, type Ask } from './ui';
 import { applyTheme } from './theme';
 
-const PAGES = ['home', 'general', 'debloater', 'fixes', 'presets', 'restore', 'services', 'network', 'resources', 'games', 'appopt', 'advanced', 'bios', 'health', 'smart', 'browsers', 'apps', 'analyzer', 'drives', 'duplicates', 'oldfiles', 'privacy', 'recycle', 'settings', 'devices', 'processes'] as const;
+const PAGES = ['home', 'general', 'debloater', 'fixes', 'presets', 'restore', 'services', 'network', 'resources', 'games', 'appopt', 'advanced', 'bios', 'health', 'smart', 'browsers', 'apps', 'analyzer', 'drives', 'duplicates', 'oldfiles', 'privacy', 'recycle', 'settings', 'devices', 'startup', 'focus'] as const;
 type Page = (typeof PAGES)[number];
 type Confirm = { title: string; body: string; confirmLabel: string; typeToConfirm?: string; resolve: (ok: boolean) => void };
 /** Tweaks the Re-Enable Defender fix reverses. */
@@ -204,7 +205,7 @@ export function App() {
         { id: 'resources', label: 'Resources', icon: 'grid' },
         { id: 'fixes', label: 'Fixes', icon: 'wrench' },
         { id: 'presets', label: 'Presets', icon: 'layers' },
-        { id: 'processes', label: 'Processes', icon: 'list' },
+        { id: 'startup', label: 'Startup Apps', icon: 'list' },
         { id: 'settings', label: 'Settings', icon: 'sliders' },
       ],
     },
@@ -216,6 +217,7 @@ export function App() {
         { id: 'network', label: 'Networking', icon: 'network' },
         { id: 'services', label: 'Services', icon: 'services' },
         { id: 'games', label: 'Game Profiles', icon: 'gamepad' },
+        { id: 'focus', label: 'Focus Mode', icon: 'bolt' },
         { id: 'appopt', label: 'App Optimizer', icon: 'app' },
         { id: 'devices', label: 'Devices', icon: 'laptop' },
         { id: 'advanced', label: 'Advanced', icon: 'chip' },
@@ -438,8 +440,10 @@ export function App() {
               <DriveHealth {...pageProps} />
             ) : page === 'devices' ? (
               <Devices {...pageProps} />
-            ) : page === 'processes' ? (
-              <Processes busy={busy} act={act} ask={ask} />
+            ) : page === 'focus' ? (
+              <Focus busy={busy} act={act} />
+            ) : page === 'startup' ? (
+              <Startup busy={busy} act={act} ask={ask} />
             ) : page === 'settings' ? (
               <Settings state={state} busy={busy} act={act} ask={ask} />
             ) : page === 'duplicates' ? (
