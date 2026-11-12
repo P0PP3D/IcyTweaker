@@ -5,6 +5,7 @@ import { Icon } from '../icons';
 import { Button, FeatureCard, RISK_STYLE, Badge, Toggle, type Ask } from '../ui';
 import type { Act } from './General';
 import { ACCENTS, applyTheme } from '../theme';
+import { openGuide } from '../Onboarding';
 
 function Switch({ on, label, onChange, disabled }: { on: boolean; label: string; onChange: (v: boolean) => void; disabled?: boolean }) {
   return (
@@ -198,6 +199,13 @@ export function Settings({ state, busy, act, ask }: { state: AppState; busy: boo
         </p>
       </FeatureCard>
       <Updates busy={busy} act={act} />
+      <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-[var(--line)] bg-[var(--card)] px-4 py-3">
+        <div>
+          <div className="font-medium text-slate-100">Beginner guide</div>
+          <p className="text-sm text-slate-400">The short walkthrough from the first start: what everything does and the first steps.</p>
+        </div>
+        <Button onClick={openGuide}>Show the guide</Button>
+      </div>
       <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-[var(--line)] bg-[var(--card)] px-4 py-3">
         <div>
           <div className="flex items-center gap-2 font-medium text-slate-100">

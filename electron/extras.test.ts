@@ -17,8 +17,9 @@ import { getKey, setKey } from './games/config';
 import { toWrites, validateValues } from './games/games';
 import { createBoost, DEFAULT_BOOST, validateBoost } from './games/boost';
 import { gameProfiles } from './games/profiles';
-import { createSessionRecorder, DROP, isDrop } from './games/session';
-import { memoryAdapter, sz } from './system/adapter';
+import { createSessionRecorder, DROP, isDrop, tempSeries } from './games/session';
+import { memoryAdapter, parseFeatures, sz } from './system/adapter';
+import { cmpVersion, olderVersions, parseEnumDrivers } from './system/driverstore';
 import { buildConfig, fromShareCode, parseConfig, toShareCode } from './system/configfile';
 import { validMode } from './system/monitors';
 import { createSafety } from './system/safety';
@@ -307,6 +308,50 @@ describe('labels, stores and launcher cleaning', () => {
     for (const id of ['steam-logs', 'epic-logs', 'riot-logs', 'ubisoft-logs', 'game-logs']) expect(t[id]?.minAgeHours, id).toBe(24);
     expect(t['steam-depotcache'].needsClosed).toBe(true);
     expect(t['ubisoft-cache'].risk).toBe('caution');
+  });
+});
+
+describe('0.1.7 parsers', () => {
+  it('DISM feature table: enabled / disabled / pending / payload removed', () => {
+    const out = 'Feature Name | State\r\n---------- | -----\r\nSMB1Protocol | Disabled\r\nMicrosoft-Hyper-V-All | Enabled\r\nRecall | Enable Pending\r\nWorkFolders-Client | Disabled with Payload Removed\r\n';
+    const m = parseFeatures(out);
+    expect([...m]).toEqual([
+      ['smb1protocol', 'disabled'],
+      ['microsoft-hyper-v-all', 'enabled'],
+      ['recall', 'enabled'],
+      ['workfolders-client', 'disabled'],
+    ]);
+  });
+  it('old drivers: every version of the same driver and maker except the newest', () => {
+    const block = (oem: string, orig: string, prov: string, ver: string) =>
+      `Published Name:     ${oem}\r\nOriginal Name:      ${orig}\r\nProvider Name:      ${prov}\r\nClass Name:         Media\r\nDriver Version:     01/02/2025 ${ver}\r\n`;
+    const pkgs = parseEnumDrivers(['Microsoft PnP Utility', block('oem1.inf', 'nvhda.inf', 'NVIDIA', '1.4.6.3'), block('oem2.inf', 'nvhda.inf', 'NVIDIA', '1.4.10.0'), block('oem3.inf', 'nvhda.inf', 'NVIDIA', '1.3.40.14'), block('oem4.inf', 'solo.inf', 'X', '1.0')].join('\r\n'));
+    expect(pkgs).toHaveLength(4);
+    expect(olderVersions(pkgs).map((p) => p.published)).toEqual(['oem1.inf', 'oem3.inf']); // 1.4.10.0 is the newest (numeric, not text, order)
+    expect(cmpVersion('1.10', '1.9')).toBeGreaterThan(0);
+    // The same maker spelled two ways is still one driver family.
+    const amd = parseEnumDrivers([block('oem7.inf', 'amdgpio2.inf', 'Advanced Micro Devices, Inc.', '2.2.0.130'), block('oem8.inf', 'amdgpio2.inf', 'Advanced Micro Devices, Inc', '2.2.0.133')].join('\r\n'));
+    expect(olderVersions(amd).map((p) => p.published)).toEqual(['oem7.inf']);
+  });
+  it('temperature history: per-minute averages from the session start', () => {
+    const start = 1_000_000;
+    const s = tempSeries(
+      [
+        { t: start + 10_000, cpu: 60, gpu: 50 },
+        { t: start + 50_000, cpu: 70, gpu: null },
+        { t: start + 70_000, cpu: 80, gpu: 60 },
+      ],
+      start,
+    );
+    expect(s).toEqual([
+      { m: 0, cpu: 65, gpu: 50 },
+      { m: 1, cpu: 80, gpu: 60 },
+    ]);
+    expect(tempSeries([], start)).toEqual([]);
+  });
+  it('Focus Mode keeps withBoost through validation', () => {
+    expect(validateFocus({ ...DEFAULT_FOCUS, withBoost: true })!.withBoost).toBe(true);
+    expect(validateFocus({ ...DEFAULT_FOCUS })!.withBoost).toBe(false);
   });
 });
 

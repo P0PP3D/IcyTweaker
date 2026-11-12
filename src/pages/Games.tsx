@@ -906,6 +906,142 @@ function BeforeAfter({ list, games }: { list: SessionReport[]; games: GameView[]
   );
 }
 
+/** Loads the session list for the temperature graph. */
+function TempHistorySection() {
+  const [list, setList] = useState<SessionReport[] | null>(null);
+  useEffect(() => void window.api.sessions().then(setList), []);
+  return list ? <TempHistory list={list} /> : null;
+}
+
+/** CPU and GPU temperature over one Game Boost session (needs the overlay on, which reads the sensors). */
+function TempHistory({ list }: { list: SessionReport[] }) {
+  const withTemps = list.filter((s) => s.temps && s.temps.length > 1);
+  const [pick, setPick] = useState(0);
+  const [hover, setHover] = useState<number | null>(null);
+  if (!withTemps.length)
+    return (
+      <div className="rounded-xl bg-[var(--card)] p-4 text-sm text-slate-400 ring-1 ring-[var(--line)]">
+        <div className="font-medium text-slate-100">Temperature history</div>
+        Temperatures are recorded while the overlay runs during Game Boost (Settings: Overlay during Game Boost). Play a session with it on and the graph shows up here.
+      </div>
+    );
+  const s = withTemps[Math.min(pick, withTemps.length - 1)];
+  const pts = s.temps!;
+  const W = 640;
+  const H = 220;
+  const pad = { l: 40, r: 56, t: 14, b: 28 };
+  const values = pts.flatMap((p) => [p.cpu, p.gpu]).filter((v): v is number => v !== null);
+  const lo = Math.max(0, Math.floor((Math.min(...values) - 5) / 10) * 10);
+  const hi = Math.max(100, Math.ceil((Math.max(...values) + 5) / 10) * 10);
+  const maxM = Math.max(1, pts[pts.length - 1].m);
+  const x = (m: number) => pad.l + (m / maxM) * (W - pad.l - pad.r);
+  const y = (v: number) => pad.t + (1 - (v - lo) / (hi - lo)) * (H - pad.t - pad.b);
+  const line = (k: 'cpu' | 'gpu') =>
+    pts
+      .filter((p) => p[k] !== null)
+      .map((p, i) => `${i ? 'L' : 'M'}${x(p.m).toFixed(1)},${y(p[k]!).toFixed(1)}`)
+      .join(' ');
+  const last = (k: 'cpu' | 'gpu') => [...pts].reverse().find((p) => p[k] !== null);
+  const ticks = Array.from({ length: Math.floor((hi - lo) / 20) + 1 }, (_, i) => lo + i * 20);
+  const h = hover === null ? null : pts[hover];
+  const SERIES = [
+    { k: 'cpu' as const, label: 'CPU', color: 'var(--chart-cpu)', limit: 95 },
+    { k: 'gpu' as const, label: 'GPU', color: 'var(--chart-gpu)', limit: 87 },
+  ];
+  return (
+    <div className="space-y-2 rounded-xl bg-[var(--card)] p-4 ring-1 ring-[var(--line)]">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div>
+          <div className="font-medium text-slate-100">Temperature history</div>
+          <p className="text-xs text-slate-500">Per minute. Dashed lines: where CPUs (95 °C) and GPUs (87 °C) typically start slowing themselves down.</p>
+        </div>
+        <select value={pick} onChange={(e) => setPick(Number(e.target.value))} aria-label="Session" className="rounded-md bg-white/5 px-2 py-1 text-sm text-slate-100 ring-1 ring-white/10">
+          {withTemps.map((x, i) => (
+            <option key={x.startedAt} value={i} className="bg-slate-900">
+              {x.game} · {new Date(x.startedAt).toLocaleString()}
+            </option>
+          ))}
+        </select>
+      </div>
+      <div className="flex items-center gap-4 text-xs text-slate-300" aria-hidden>
+        {SERIES.map((d) => (
+          <span key={d.k} className="inline-flex items-center gap-1.5">
+            <span className="h-0.5 w-4 rounded" style={{ background: d.color }} />
+            {d.label}
+          </span>
+        ))}
+      </div>
+      <svg viewBox={`0 0 ${W} ${H}`} className="w-full" role="img" aria-label={`CPU and GPU temperature during ${s.game}`} onMouseLeave={() => setHover(null)}>
+        {ticks.map((t) => (
+          <g key={t}>
+            <line x1={pad.l} x2={W - pad.r} y1={y(t)} y2={y(t)} stroke="rgb(var(--ink) / 0.07)" />
+            <text x={pad.l - 6} y={y(t) + 4} textAnchor="end" className="fill-slate-500 text-[11px]">
+              {t}°
+            </text>
+          </g>
+        ))}
+        {SERIES.map((d) =>
+          d.limit > lo && d.limit < hi ? <line key={`l-${d.k}`} x1={pad.l} x2={W - pad.r} y1={y(d.limit)} y2={y(d.limit)} stroke={d.color} strokeOpacity={0.45} strokeDasharray="4 4" /> : null,
+        )}
+        <text x={pad.l} y={H - 8} className="fill-slate-500 text-[11px]">
+          0 min
+        </text>
+        <text x={W - pad.r} y={H - 8} textAnchor="end" className="fill-slate-500 text-[11px]">
+          {maxM} min
+        </text>
+        {SERIES.map((d) => {
+          const end = last(d.k);
+          return (
+            <g key={d.k}>
+              <path d={line(d.k)} fill="none" stroke={d.color} strokeWidth={2} strokeLinejoin="round" strokeLinecap="round" />
+              {end && (
+                <text x={x(end.m) + 6} y={y(end[d.k]!) + 4} className="fill-slate-200 text-[11px] font-medium">
+                  {d.label} {end[d.k]}°
+                </text>
+              )}
+            </g>
+          );
+        })}
+        {h && (
+          <g>
+            <line x1={x(h.m)} x2={x(h.m)} y1={pad.t} y2={H - pad.b} stroke="rgb(var(--ink) / 0.3)" />
+            {SERIES.map((d) => (h[d.k] !== null ? <circle key={d.k} cx={x(h.m)} cy={y(h[d.k]!)} r={4} fill={d.color} stroke="var(--card)" strokeWidth={2} /> : null))}
+          </g>
+        )}
+        {/* Hit areas: one band per point, wider than the line. */}
+        {pts.map((p, i) => {
+          const half = (W - pad.l - pad.r) / Math.max(1, pts.length - 1) / 2;
+          return <rect key={i} x={x(p.m) - half} y={pad.t} width={half * 2} height={H - pad.t - pad.b} fill="transparent" onMouseEnter={() => setHover(i)} />;
+        })}
+      </svg>
+      <p className="h-4 text-xs text-slate-300" aria-live="polite">
+        {h ? `Minute ${h.m}: CPU ${h.cpu ?? '—'} °C, GPU ${h.gpu ?? '—'} °C` : 'Hover the graph to read a minute.'}
+      </p>
+      <details className="text-xs text-slate-400">
+        <summary className="cursor-pointer">Show as table</summary>
+        <table className="mt-1 w-full max-w-sm text-left">
+          <thead className="text-slate-500">
+            <tr>
+              <th className="font-normal">Minute</th>
+              <th className="font-normal">CPU °C</th>
+              <th className="font-normal">GPU °C</th>
+            </tr>
+          </thead>
+          <tbody>
+            {pts.map((p) => (
+              <tr key={p.m} className="text-slate-300">
+                <td>{p.m}</td>
+                <td>{p.cpu ?? '—'}</td>
+                <td>{p.gpu ?? '—'}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </details>
+    </div>
+  );
+}
+
 /** The apps that most often used CPU right after an FPS drop, across all sessions. */
 function Culprits({ list }: { list: SessionReport[] }) {
   const count = new Map<string, number>();
@@ -1075,6 +1211,7 @@ export function Games({ busy, act, ask }: { busy: boolean; act: Act; ask: Ask })
       {tab === 'performance' && (
         <>
           <Sessions games={games ?? []} />
+          <TempHistorySection />
           <Frametimes busy={busy} />
           <SensConverter />
         </>

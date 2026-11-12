@@ -111,6 +111,13 @@ export function Focus({ busy, act }: { busy: boolean; act: Act }) {
           </div>
           <label className="flex items-center justify-between gap-3 rounded-xl bg-[var(--card)] px-4 py-3 text-sm text-slate-200 ring-1 ring-[var(--line)]">
             <span>
+              Turn on with Game Boost
+              <span className="block text-xs text-slate-500">On by itself when Game Boost starts a game, off again when the game closes.</span>
+            </span>
+            <Toggle on={!!s.withBoost} label="Turn on with Game Boost" disabled={busy} onChange={(v) => void save({ withBoost: v })} />
+          </label>
+          <label className="flex items-center justify-between gap-3 rounded-xl bg-[var(--card)] px-4 py-3 text-sm text-slate-200 ring-1 ring-[var(--line)]">
+            <span>
               Reopen closed apps when Focus Mode turns off
               <span className="block text-xs text-slate-500">They reopen as normal (not administrator) programs.</span>
             </span>

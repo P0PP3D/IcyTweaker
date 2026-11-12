@@ -214,5 +214,12 @@ Full spec: `docs/SPEC.md`. Work one phase of its "Build order" at a time.
 - Installer: assisted NSIS, branded (build/installerSidebar.bmp + installerHeader.bmp from scripts/installer-art.ps1,
   welcome text in installer.nsh `customWelcomePage`). Restart and install = `quitAndInstall(true, true)` (silent, runs the
   app after; the non-silent assisted run did not relaunch it).
+- 0.1.7: Focus `withBoost` (main `focusByBoost`: off only if Boost turned it on). Session `temps` (`tempSeries`, per-minute,
+  max 240 points) -> Performance `TempHistory` (chart colours --chart-cpu/--chart-gpu, validated with the dataviz script).
+  `system/benchmark.ts` (worker_threads, never blocks main; benchmarks.json). `system/driverstore.ts` old driver versions
+  (pnputil /enum-drivers, `makerKey` normalises makers; remove = /export-driver to driver-backups then /delete-driver
+  without /force, behind a restore point). Setting kind `feature` (DISM table, needs admin; 3010 ok) + `tweaks/features.ts`
+  (page 'features'). Beginner guide = Onboarding.tsx (`openGuide` event, reopen from Home/Settings). Sidebar sections
+  fold (localStorage `foldedSections`; the active page stays visible). Mouse polling test already lives on Devices.
 - Hardware detection (~9 s) is cached in `hardware.json` (userData) and refreshed in the background. Start-up reads
   must run in parallel (sequential awaits defeat the batched reads).

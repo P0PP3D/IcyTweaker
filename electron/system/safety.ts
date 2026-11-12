@@ -44,6 +44,8 @@ const describeRef = (r: SettingRef) => {
       return `Network adapter "${r.adapter}" ${r.keyword}`;
     case 'regKey':
       return `Registry key ${r.hive}\\${r.key}`;
+    case 'feature':
+      return `Windows feature ${r.name}`;
     case 'configKey':
       return `${r.file}: ${r.section ? `[${r.section}] ` : ''}${r.name}`;
   }

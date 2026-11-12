@@ -21,6 +21,8 @@ import { bootInfo } from './system/boot';
 import { displayModes, monitors } from './system/monitors';
 import { findDuplicates, findOldFiles, keptOut } from './cleaner/finder';
 import { DEFAULT_FOCUS, FOCUS_APPS, FOCUS_SERVICES, createFocus, validateFocus } from './games/focus';
+import { createBenchHistory, runBenchmark } from './system/benchmark';
+import { listOldDrivers } from './system/driverstore';
 import { TRACES as PRIVACY_TRACES, createPrivacy } from './cleaner/privacy';
 import { restoreDefender } from './system/uninstall';
 import { createDriverJob, driverInfo } from './resources/driver';
@@ -38,6 +40,7 @@ import { isAdmin, relaunchAsAdmin } from './system/admin';
 import { createSafety } from './system/safety';
 import { createEngine } from './tweaks/engine';
 import { generalTweaks } from './tweaks/general';
+import { featureTweaks } from './tweaks/features';
 import { presets } from './tweaks/presets';
 import { createStatsSampler } from './system/stats';
 import { appTweaks } from './apps/apps';
@@ -167,7 +170,7 @@ app.whenReady().then(async () => {
     const found = await Promise.all(AC.map(([, svcs]) => Promise.all(svcs.map((s) => adapter.read({ kind: 'service', name: s }).catch(() => null)))));
     const antiCheats: string[] = AC.filter((_, i) => found[i].some((v) => v !== null)).map(([name]) => name);
     const { withRestorePoint, serial, ...engine } = createEngine({
-      tweaks: [...generalTweaks, ...serviceTweaks, ...networkTweaks(interfaces, nics), ...appTweaks(appPaths), ...advancedTweaks(msiDevices)],
+      tweaks: [...generalTweaks, ...serviceTweaks, ...networkTweaks(interfaces, nics), ...appTweaks(appPaths), ...advancedTweaks(msiDevices), ...featureTweaks],
       presets,
       fixes: [...fixes, ...networkFixes],
       safety,
@@ -296,12 +299,25 @@ app.whenReady().then(async () => {
     // Session reports: started and ended with each Game Boost session, fed by the overlay and the boost timer.
     const sessions = createSessionRecorder(path.join(safety.dataDir, 'sessions.json'));
     const cpuLoad = cpuMeter();
+    let focusByBoost = false; // Focus Mode was turned on by a Game Boost session (so that session's end turns it off)
+    const benchHistory = createBenchHistory(path.join(safety.dataDir, 'benchmarks.json'));
+    let benchRunning = false;
+    let oldDriverIds = new Set<string>(); // published names (oemNN.inf) from the last listOldDrivers()
     const boostGames = gameProfiles.map((g) => ({ id: g.id, name: g.name, exe: [...g.exe] }));
     const boost = createBoost(safety, boostGames, settings.boost, (e, game) => {
       if (settings.app.overlayWithBoost) void (e === 'start' ? startOverlayFor(game) : stopOverlay());
+      // Focus Mode with Game Boost: on when a game starts (if it isn't already on), off when that game ends, but only
+      // if Game Boost was the one that turned it on.
+      if (e === 'start' && settings.focus.withBoost && !focus.state() && (admin || !live)) {
+        focusByBoost = true;
+        void focus.on(settings.focus).then(updateTray, () => (focusByBoost = false));
+      } else if (e === 'end' && focusByBoost) {
+        focusByBoost = false;
+        void focus.off(settings.focus.reopen).then(updateTray, () => {});
+      }
       if (e === 'start') {
         sessions.start(game);
-        notify(`Game Boost on: ${game}`, 'Power plan and background apps adjusted.');
+        notify(`Game Boost on: ${game}`, `Power plan and background apps adjusted${settings.focus.withBoost ? ', Focus Mode on' : ''}.`);
       } else {
         void sessions.end().then((r) => {
           const fps = r?.fpsAvg ? ` Average ${r.fpsAvg} FPS${r.low1 ? `, 1% low ${r.low1}` : ''}.` : '';
@@ -1407,6 +1423,64 @@ app.whenReady().then(async () => {
       // ---- Duplicate Finder and Old Files (read-only scans; deletes go to the Recycle Bin)
       findRoots: async () => analyzeRoots,
       lastScans: async () => lastScans,
+
+      // ---- Old driver cleanup (Driver Store). Only packages from the last listing can be removed.
+      async listOldDrivers() {
+        try {
+          const list = await listOldDrivers(adapter, sysRoot);
+          oldDriverIds = new Set(list.map((d) => d.published.toLowerCase()));
+          return { drivers: list };
+        } catch (err) {
+          return { drivers: [], error: `Could not read the Driver Store: ${(err as Error).message}` };
+        }
+      },
+
+      async removeOldDrivers(names: unknown) {
+        const list = Array.isArray(names) ? names : [];
+        if (!list.length || list.some((n) => typeof n !== 'string' || !oldDriverIds.has(n.toLowerCase()) || !/^oem\d+\.inf$/i.test(n))) return { ok: false, message: 'Invalid request.' };
+        if (live && !admin) return { ok: false, message: 'Removing drivers needs administrator. Relaunch as admin first.' };
+        const pnputil = path.join(sysRoot, 'System32', 'pnputil.exe');
+        return withRestorePoint('Remove old drivers', async () => {
+          const removed: string[] = [];
+          const kept: string[] = [];
+          for (const [i, n] of (list as string[]).entries()) {
+            progress({ task: 'drivers', done: i, total: list.length, current: n });
+            // A copy first, so it can be added back (pnputil /add-driver); then delete without /force (refused if in use).
+            const backup = path.join(driverBackupRoot, `old-${new Date().toISOString().slice(0, 10)}`, n.replace(/\.inf$/i, ''));
+            try {
+              await mkdir(backup, { recursive: true });
+              await adapter.exec(pnputil, ['/export-driver', n, backup], 120_000);
+              await adapter.exec(pnputil, ['/delete-driver', n], 120_000);
+              removed.push(n);
+              oldDriverIds.delete(n.toLowerCase());
+            } catch {
+              kept.push(n);
+            }
+          }
+          progress({ task: 'drivers', done: list.length, total: list.length, current: '' });
+          await safety.log('old-drivers', `${removed.length} removed`, true, `${removed.join(', ')}${kept.length ? ` | kept (in use or failed): ${kept.join(', ')}` : ''}${live ? '' : ' (dry-run)'}`);
+          return {
+            ok: true,
+            message: `${removed.length} old driver(s) removed${live ? '' : ' (dry-run: nothing removed)'}.${kept.length ? ` ${kept.length} kept: Windows reported them in use.` : ''} Copies are in ${driverBackupRoot}.`,
+          };
+        });
+      },
+
+      async runBenchmark() {
+        if (benchRunning) return { history: await benchHistory.list(), error: 'A benchmark is already running.' };
+        benchRunning = true;
+        try {
+          const r = await runBenchmark(safety.dataDir, (current, done) => progress({ task: 'benchmark', done, total: 4, current }));
+          await safety.log('benchmark', 'quick', true, JSON.stringify(r));
+          return { history: await benchHistory.add(r) };
+        } catch (err) {
+          return { history: await benchHistory.list(), error: `Benchmark failed: ${(err as Error).message}` };
+        } finally {
+          benchRunning = false;
+          progress({ task: 'benchmark', done: 4, total: 4, current: '' });
+        }
+      },
+      benchmarks: () => benchHistory.list(),
 
       focusInfo: async () => ({
         settings: settings.focus,

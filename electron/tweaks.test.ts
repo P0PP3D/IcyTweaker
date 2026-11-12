@@ -16,8 +16,9 @@ import { appTweaks } from './apps/apps';
 import { advancedTweaks } from './advanced/advanced';
 
 /** Every tweak on every page; the network tweaks built for one fake interface. */
-const allTweaks = [...generalTweaks, ...serviceTweaks, ...networkTweaks(['{00000000-0000-0000-0000-000000000001}']), ...appTweaks({ discord: 'C:/fake/discord/settings.json', opera: 'C:/fake/opera/Local State', operaGx: 'C:/fake/gx/Local State', spotify: 'C:/fake/spotify/prefs', obs: 'C:/fake/obs/global.ini' }), ...advancedTweaks([{ name: 'GPU', pnp: 'PCI\\VEN_10DE&DEV_0000\\1' }])];
+const allTweaks = [...generalTweaks, ...serviceTweaks, ...networkTweaks(['{00000000-0000-0000-0000-000000000001}']), ...appTweaks({ discord: 'C:/fake/discord/settings.json', opera: 'C:/fake/opera/Local State', operaGx: 'C:/fake/gx/Local State', spotify: 'C:/fake/spotify/prefs', obs: 'C:/fake/obs/global.ini' }), ...advancedTweaks([{ name: 'GPU', pnp: 'PCI\\VEN_10DE&DEV_0000\\1' }]), ...featureTweaks];
 import { presets } from './tweaks/presets';
+import { featureTweaks } from './tweaks/features';
 
 const TMP = path.join(process.cwd(), '.test-tmp', 'tweaks');
 let dirCount = 0;

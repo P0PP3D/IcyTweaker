@@ -21,7 +21,7 @@ export interface TweakMeta {
   /** Adjustable tweaks: the values the user can pick from. The first is the default when toggled on. */
   options?: Array<{ value: number; label: string }>;
   /** Which page lists it. Default 'general'. */
-  page?: 'general' | 'network' | 'services' | 'apps' | 'advanced' | 'devices';
+  page?: 'general' | 'network' | 'services' | 'apps' | 'advanced' | 'devices' | 'features';
   /** Services page: the group card it belongs to. */
   group?: string;
   /** Process names (lower case) that must not be running while it changes, e.g. an app that rewrites its settings on exit. */
@@ -335,6 +335,14 @@ export interface SessionReport {
   hot: string[];
   /** FPS drops (overlay running): which background apps used the most CPU right after each one. */
   stutters?: Stutter[];
+  /** CPU / GPU temperature over the session (overlay running), averaged per minute (wider for long sessions). */
+  temps?: TempPoint[];
+}
+export interface TempPoint {
+  /** Minutes since the session started. */
+  m: number;
+  cpu: number | null;
+  gpu: number | null;
 }
 export interface Stutter {
   at: string;
@@ -638,7 +646,7 @@ export interface ActionReport {
 
 /** Progress of a long task. For 'analyze', done = files scanned and total = 0 (unknown). */
 export interface Progress {
-  task: 'uninstall' | 'scan' | 'clean' | 'analyze' | 'system-check' | 'runtimes' | 'net-test' | 'driver' | 'frametime' | 'find' | 'update' | 'restore-point' | 'restart';
+  task: 'uninstall' | 'scan' | 'clean' | 'analyze' | 'system-check' | 'runtimes' | 'net-test' | 'driver' | 'frametime' | 'find' | 'update' | 'restore-point' | 'restart' | 'benchmark' | 'drivers';
   done: number;
   total: number;
   current: string;
@@ -703,6 +711,27 @@ export interface DirEntry {
   isDir: boolean;
 }
 
+/** An older version of a driver that has a newer one installed (Driver Store). bytes null = size not found. */
+export interface OldDriver {
+  published: string;
+  original: string;
+  provider: string;
+  cls: string;
+  date: string;
+  version: string;
+  bytes: number | null;
+}
+
+/** One quick-benchmark run. cpu: MB/s of SHA-256; memory: GB/s copy; disk: MB/s. */
+export interface BenchResult {
+  at: string;
+  cpuSingle: number;
+  cpuMulti: number;
+  memory: number;
+  diskWrite: number;
+  diskRead: number;
+}
+
 /** Focus Mode: what it stops (service names) and closes (exe names) while on. */
 export interface FocusSettings {
   services: string[];
@@ -713,6 +742,8 @@ export interface FocusSettings {
   exceptions: string[];
   /** Reopen the closed apps when Focus Mode turns off. */
   reopen: boolean;
+  /** Turn on by itself when Game Boost starts a game, and off when it ends. */
+  withBoost?: boolean;
 }
 /** While Focus Mode is on: what it actually stopped and closed. */
 export interface FocusState {
@@ -917,6 +948,13 @@ export interface OptimizerApi {
   findRoots(): Promise<string[]>;
   /** A Steam library game's header art (data URL) from Steam's local cache; null = none. */
   libraryArt(id: string): Promise<string | null>;
+  /** Older versions of installed drivers (Driver Store). Read-only. */
+  listOldDrivers(): Promise<{ drivers: OldDriver[]; error?: string }>;
+  /** Export each to driver-backups, then remove it (Windows refuses ones in use). Restore point first. */
+  removeOldDrivers(published: string[]): Promise<ActionReport>;
+  /** Run the quick benchmark (about 10 s); returns the history, newest first. */
+  runBenchmark(): Promise<{ history: BenchResult[]; error?: string }>;
+  benchmarks(): Promise<BenchResult[]>;
   focusInfo(): Promise<FocusInfo>;
   setFocusSettings(s: FocusSettings): Promise<FocusInfo>;
   /** Turn Focus Mode on or off. */

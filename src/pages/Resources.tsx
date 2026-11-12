@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import clsx from 'clsx';
-import type { AppState, DriverBackupView, DriverInfo, DriverJobView, DriverLatency, LatencyCheck, ToolStatus, Progress, RuntimeResult, RuntimeView, ShortcutView, SystemCheckStep } from '../../shared/types';
+import type { AppState, BenchResult, DriverBackupView, DriverInfo, DriverJobView, DriverLatency, LatencyCheck, ToolStatus, Progress, RuntimeResult, RuntimeView, ShortcutView, SystemCheckStep } from '../../shared/types';
 import { Icon } from '../icons';
 import { Badge, Button, CheckList, FeatureCard, MUTED_BADGE, Tabs, formatBytes, type Ask } from '../ui';
 import type { Act } from './General';
@@ -422,6 +422,76 @@ function Shortcuts({ busy, act }: { busy: boolean; act: Act }) {
 }
 
 /** Standby memory: what Windows keeps cached; can be freed by hand (Game Boost can do it during play). */
+/** Quick benchmark: run before and after tweaks; each row compares with the run before it. */
+function Benchmark({ busy }: { busy: boolean }) {
+  const [history, setHistory] = useState<BenchResult[] | null>(null);
+  const [running, setRunning] = useState(false);
+  const [step, setStep] = useState('');
+  const [error, setError] = useState<string>();
+  useEffect(() => void window.api.benchmarks().then(setHistory), []);
+  useEffect(() => window.api.onProgress((p) => p.task === 'benchmark' && setStep(p.current)), []);
+  const run = async () => {
+    setRunning(true);
+    setError(undefined);
+    const r = await window.api.runBenchmark();
+    setHistory(r.history);
+    setError(r.error);
+    setRunning(false);
+  };
+  const [now, before] = history ?? [];
+  const METRICS: Array<{ k: keyof Omit<BenchResult, 'at'>; label: string; unit: string }> = [
+    { k: 'cpuSingle', label: 'CPU, one core', unit: 'MB/s' },
+    { k: 'cpuMulti', label: 'CPU, all cores', unit: 'MB/s' },
+    { k: 'memory', label: 'Memory', unit: 'GB/s' },
+    { k: 'diskWrite', label: 'Disk write', unit: 'MB/s' },
+    { k: 'diskRead', label: 'Disk read', unit: 'MB/s' },
+  ];
+  return (
+    <FeatureCard
+      icon="bolt"
+      title="Quick benchmark"
+      subtitle="About 10 seconds. Run it before and after tweaks to compare"
+      footer={
+        <Button primary disabled={busy || running} onClick={() => void run()}>
+          {running ? `Running: ${step || 'starting'}…` : now ? 'Run again' : 'Run benchmark'}
+        </Button>
+      }
+    >
+      {error && <p className="text-rose-300">{error}</p>}
+      {!now ? (
+        <p>Measures CPU speed (one core and all cores), memory speed and disk speed, all on this PC. Close games and big downloads first for steady numbers.</p>
+      ) : (
+        <>
+          <ul className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+            {METRICS.map((m) => {
+              const pct = before && before[m.k] ? Math.round(((now[m.k] - before[m.k]) / before[m.k]) * 100) : null;
+              return (
+                <li key={m.k} className="rounded-lg bg-[var(--card-2)] px-3 py-2 ring-1 ring-[var(--line)]">
+                  <div className="text-xs text-slate-400">{m.label}</div>
+                  <div className="flex items-baseline gap-2">
+                    <span className="text-lg font-semibold tabular-nums text-slate-50">{now[m.k].toLocaleString()}</span>
+                    <span className="text-xs text-slate-500">{m.unit}</span>
+                    {pct !== null && (
+                      <span className={clsx('ml-auto text-xs font-medium tabular-nums', Math.abs(pct) < 3 ? 'text-slate-400' : pct > 0 ? 'text-emerald-300' : 'text-amber-300')}>
+                        {pct > 0 ? '+' : ''}
+                        {pct}%
+                      </span>
+                    )}
+                  </div>
+                </li>
+              );
+            })}
+          </ul>
+          <p className="text-xs text-slate-500">
+            Last run {new Date(now.at).toLocaleString()}
+            {before ? `, compared with ${new Date(before.at).toLocaleString()}. Changes under 3% are normal run-to-run noise.` : '. Run it again after changing something to compare.'}
+          </p>
+        </>
+      )}
+    </FeatureCard>
+  );
+}
+
 function StandbyMemory({ busy, act }: { busy: boolean; act: Act }) {
   const [m, setM] = useState<{ freeMb: number; standbyMb: number } | { error: string } | null>(null);
   const load = () => window.api.memoryStatus().then(setM);
@@ -498,6 +568,7 @@ export function Resources({ state, busy, act, ask, onDriverJob }: { state: AppSt
         </div>
       ) : tab === 'diagnostics' ? (
         <div className="space-y-4">
+          <Benchmark busy={busy} />
           <Latency busy={busy} />
           <StandbyMemory busy={busy} act={act} />
           <DriverBackups busy={busy} act={act} ask={ask} />

@@ -4,6 +4,7 @@ import type { AppState, MonitorInfo, Stats } from '../../shared/types';
 import { Icon, type IconName } from '../icons';
 import { Button, Ring } from '../ui';
 import { appliedCount } from './General';
+import { openGuide } from '../Onboarding';
 
 const gb = (bytes: number) => (bytes / 1024 ** 3).toFixed(1);
 type Go = (page: 'general' | 'health' | 'games' | 'apps' | 'resources') => void;
@@ -36,7 +37,11 @@ export function Home({ state, go }: { state: AppState; go: Go }) {
           <h2 className="text-2xl font-semibold tracking-tight text-slate-50">{greeting()}</h2>
           <p className="text-sm text-slate-400">Here is how your PC is doing right now.</p>
         </div>
-        <div className="flex gap-2 text-xs">
+        <div className="flex items-center gap-2 text-xs">
+          <button onClick={openGuide} className="inline-flex items-center gap-1.5 rounded-full bg-sky-500/10 px-2.5 py-1 text-sky-200 ring-1 ring-sky-500/30 hover:bg-sky-500/20">
+            <Icon name="sparkles" className="h-3.5 w-3.5" />
+            Beginner guide
+          </button>
           <Chip on={state.live} label={state.live ? 'Live' : 'Dry-run'} />
           <Chip on={state.isAdmin} label={state.isAdmin ? 'Administrator' : 'Not admin'} />
         </div>

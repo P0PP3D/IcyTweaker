@@ -48,7 +48,9 @@ export type SettingRef =
   /** One advanced property of a network adapter (Device Manager > Advanced), by its standard registry keyword. Value its registry value. */
   | { kind: 'netAdv'; adapter: string; keyword: string }
   /** A registry key's existence (created with an empty default value). Value true = exists, null = absent. */
-  | { kind: 'regKey'; hive: Hive; key: string };
+  | { kind: 'regKey'; hive: Hive; key: string }
+  /** A Windows optional feature (Turn Windows features on or off). Value 'enabled' | 'disabled'; null = not on this PC. */
+  | { kind: 'feature'; name: string };
 
 export type Value = RegValue | string | number | boolean;
 
@@ -57,7 +59,7 @@ export type Value = RegValue | string | number | boolean;
  * and neither can a key a game's own config file doesn't have (JSON app settings can).
  */
 export const creatable = (ref: SettingRef) =>
-  ref.kind === 'configKey' ? ref.format === 'json' || ref.format === 'prefs' : !['task', 'service', 'power', 'tcpGlobal', 'dns', 'hosts', 'netAdv'].includes(ref.kind);
+  ref.kind === 'configKey' ? ref.format === 'json' || ref.format === 'prefs' : !['task', 'service', 'power', 'tcpGlobal', 'dns', 'hosts', 'netAdv', 'feature'].includes(ref.kind);
 
 export interface ExecResult {
   stdout: string;
@@ -120,6 +122,8 @@ export function refId(r: SettingRef): string {
       return `netadv:${r.adapter}:${r.keyword}`.toLowerCase();
     case 'regKey':
       return `key:${r.hive}\\${r.key}`.toLowerCase();
+    case 'feature':
+      return `feature:${r.name}`.toLowerCase();
     case 'configKey':
       return `cfg:${r.file}|${r.section ?? ''}|${r.name}`.toLowerCase();
     default:
@@ -140,6 +144,7 @@ const SCHTASKS_EXE = sys('schtasks.exe');
 export const SC_EXE = sys('sc.exe');
 const POWERCFG_EXE = sys('powercfg.exe');
 const FSUTIL_EXE = sys('fsutil.exe');
+const DISM_EXE = sys('dism.exe');
 
 export const NETSH_EXE = sys('netsh.exe');
 export const HOSTS_FILE = path.join(SYSTEM32, 'drivers', 'etc', 'hosts');
@@ -175,6 +180,16 @@ export function run(file: string, args: string[], opts: number | ExecOptions = 1
   });
 }
 
+/** `dism /online /English /get-features /format:table` -> feature name (lower case) -> 'enabled' | 'disabled'. */
+export function parseFeatures(text: string): Map<string, 'enabled' | 'disabled'> {
+  const out = new Map<string, 'enabled' | 'disabled'>();
+  for (const line of text.split(/\r?\n/)) {
+    const m = /^\s*([\w.-]+)\s*\|\s*(Enabled|Disabled|Enable Pending|Disable Pending|Disabled with Payload Removed)\s*$/i.exec(line);
+    if (m) out.set(m[1].toLowerCase(), /^enable/i.test(m[2]) ? 'enabled' : 'disabled');
+  }
+  return out;
+}
+
 /** Parses `netsh int tcp show global`. Labels are English; on other languages this returns {} (setting unavailable). */
 export function parseTcpGlobal(text: string): Partial<Record<'rss' | 'autotuninglevel' | 'ecncapability', string>> {
   const label = { rss: 'Receive-Side Scaling State', autotuninglevel: 'Receive Window Auto-Tuning Level', ecncapability: 'ECN Capability' } as const;
@@ -194,11 +209,11 @@ const READ_SLOTS = 6;
 const FRESH_MS = 1500;
 let readsRunning = 0;
 const readQueue: Array<() => void> = [];
-async function pooled(file: string, args: string[]): Promise<ExecResult> {
+async function pooled(file: string, args: string[], timeoutMs = 30_000): Promise<ExecResult> {
   if (readsRunning >= READ_SLOTS) await new Promise<void>((r) => readQueue.push(r));
   readsRunning++;
   try {
-    return await run(file, args, 30_000);
+    return await run(file, args, timeoutMs);
   } finally {
     readsRunning--;
     readQueue.shift()?.();
@@ -208,11 +223,11 @@ async function pooled(file: string, args: string[]): Promise<ExecResult> {
 type Fresh<T> = { at: number; value: Promise<T> };
 const fresh = <T>(e: Fresh<T> | null | undefined): e is Fresh<T> => !!e && Date.now() - e.at < FRESH_MS;
 const readMemo = new Map<string, Fresh<ExecResult>>();
-function readRun(file: string, args: string[]): Promise<ExecResult> {
+function readRun(file: string, args: string[], timeoutMs?: number): Promise<ExecResult> {
   const id = [file, ...args].join('\0');
   const hit = readMemo.get(id);
   if (fresh(hit)) return hit.value;
-  const value = pooled(file, args);
+  const value = pooled(file, args, timeoutMs);
   readMemo.set(id, { at: Date.now(), value });
   value.catch(() => readMemo.get(id)?.value === value && readMemo.delete(id)); // failures aren't kept
   return value;
@@ -428,6 +443,11 @@ export async function liveRead(ref: SettingRef): Promise<Value | null> {
       return (await netAdvValues(ref.adapter)).get(ref.keyword.toLowerCase()) ?? null;
     case 'regKey':
       return readRun(REG_EXE, ['query', `${ref.hive}\\${ref.key}`, '/reg:64']).then(() => true, () => null);
+    case 'feature': {
+      // One DISM listing for every feature (identical reads share one run). Needs administrator: else null (unavailable).
+      const out = await readRun(DISM_EXE, ['/online', '/English', '/get-features', '/format:table'], 120_000).then((r) => r.stdout, () => '');
+      return parseFeatures(out).get(ref.name.toLowerCase()) ?? null;
+    }
     case 'configKey': {
       const text = await readFile(ref.file, 'utf8').catch(() => null);
       return text === null ? null : getKey(text.replace(BOM, ''), ref.format, ref.section, ref.name);
@@ -511,6 +531,15 @@ async function liveWrite(ref: SettingRef, value: Value | null): Promise<void> {
       } else await run(REG_EXE, ['add', target, '/ve', '/f', '/reg:64']);
       return;
     }
+    case 'feature':
+      // 3010 = done, restart needed. Enabling may download files from Windows Update. A feature can't be "absent".
+      if (value === 'enabled' || value === 'disabled')
+        await run(
+          DISM_EXE,
+          ['/online', value === 'enabled' ? '/enable-feature' : '/disable-feature', `/featurename:${ref.name}`, ...(value === 'enabled' ? ['/all'] : []), '/norestart', '/quiet'],
+          { timeoutMs: 600_000, okCodes: [3010] },
+        );
+      return;
     case 'configKey': {
       const text = await readFile(ref.file, 'utf8').catch((err: NodeJS.ErrnoException) => {
         if (err.code === 'ENOENT' && value === null) return null; // file gone: the key is already absent

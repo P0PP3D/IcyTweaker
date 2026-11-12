@@ -2,7 +2,7 @@
 // overlay ran; CPU load is sampled every boost tick either way. Kept in sessions.json (newest first, last 50).
 import { readFile, rename, writeFile } from 'node:fs/promises';
 import os from 'node:os';
-import type { OverlayStats, SessionReport, Stutter } from '../../shared/types';
+import type { OverlayStats, SessionReport, Stutter, TempPoint } from '../../shared/types';
 
 /** Temperatures where CPUs and GPUs start slowing themselves down (typical limits; vendors differ a little). */
 export const HOT = { cpu: 95, gpu: 87 } as const;
@@ -61,12 +61,32 @@ export function isDrop(fps: number[], now: number): number | null {
   return now < before * DROP.ratio ? Math.round(before) : null;
 }
 
+/**
+ * Temperature history: readings averaged into buckets (1 minute, wider for long sessions so a report keeps at most
+ * MAX_POINTS points). m = minutes since the session started.
+ */
+const MAX_POINTS = 240;
+export function tempSeries(readings: Array<{ t: number; cpu: number | null; gpu: number | null }>, start: number): TempPoint[] {
+  if (!readings.length) return [];
+  const span = Math.max(1, (readings[readings.length - 1].t - start) / 60_000);
+  const minutes = Math.max(1, Math.ceil(span / MAX_POINTS));
+  const buckets = new Map<number, { cpu: number[]; gpu: number[] }>();
+  for (const r of readings) {
+    const k = Math.floor((r.t - start) / 60_000 / minutes);
+    const b = buckets.get(k) ?? { cpu: [], gpu: [] };
+    if (r.cpu !== null) b.cpu.push(r.cpu);
+    if (r.gpu !== null) b.gpu.push(r.gpu);
+    buckets.set(k, b);
+  }
+  return [...buckets].sort((a, b) => a[0] - b[0]).map(([k, b]) => ({ m: k * minutes, cpu: avg(b.cpu), gpu: avg(b.gpu) }));
+}
+
 export function createSessionRecorder(file: string) {
-  let current: { game: string; startedAt: string; samples: Array<Partial<OverlayStats>>; stutters: Stutter[] } | null = null;
+  let current: { game: string; startedAt: string; samples: Array<Partial<OverlayStats>>; stutters: Stutter[]; temps: Array<{ t: number; cpu: number | null; gpu: number | null }> } | null = null;
   const history = async (): Promise<SessionReport[]> => readFile(file, 'utf8').then((t) => JSON.parse(t) as SessionReport[], () => []);
   return {
     start(game: string) {
-      current = { game, startedAt: new Date().toISOString(), samples: [], stutters: [] };
+      current = { game, startedAt: new Date().toISOString(), samples: [], stutters: [], temps: [] };
     },
     /**
      * One reading. Ignored when no session runs. Returns the average FPS before it when this reading is a drop.
@@ -76,6 +96,8 @@ export function createSessionRecorder(file: string) {
       if (!current || (st.game && st.game !== current.game)) return null;
       const drop = typeof st.fps === 'number' ? isDrop(nums(current.samples.map((x) => x.fps)), st.fps) : null;
       current.samples.push(st);
+      const num = (v: unknown) => (typeof v === 'number' && Number.isFinite(v) ? v : null);
+      if (num(st.cpuTemp) !== null || num(st.gpuTemp) !== null) current.temps.push({ t: Date.now(), cpu: num(st.cpuTemp), gpu: num(st.gpuTemp) });
       return drop;
     },
     /** Records what ran during a drop (see main). */
@@ -84,7 +106,11 @@ export function createSessionRecorder(file: string) {
     },
     async end(): Promise<SessionReport | null> {
       if (!current) return null;
-      const r = { ...summarize(current.game, current.startedAt, new Date().toISOString(), current.samples), stutters: current.stutters };
+      const r = {
+        ...summarize(current.game, current.startedAt, new Date().toISOString(), current.samples),
+        stutters: current.stutters,
+        temps: tempSeries(current.temps, Date.parse(current.startedAt)),
+      };
       current = null;
       const list = [r, ...(await history())].slice(0, KEEP);
       await writeFile(`${file}.tmp`, JSON.stringify(list, null, 2));

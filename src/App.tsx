@@ -5,6 +5,8 @@ import { Settings } from './pages/Settings';
 import { Devices } from './pages/Devices';
 import { Startup } from './pages/Startup';
 import { Focus } from './pages/Focus';
+import { OldDrivers } from './pages/OldDrivers';
+import { WinFeatures } from './pages/WinFeatures';
 import { Duplicates, OldFiles, Privacy } from './pages/Finder';
 import { Onboarding } from './Onboarding';
 import { Debloater } from './pages/Debloater';
@@ -26,7 +28,7 @@ import { Icon, Logo, type IconName } from './icons';
 import { Banner, Button, ConfirmDialog, TweakRow, type Ask } from './ui';
 import { applyTheme } from './theme';
 
-const PAGES = ['home', 'general', 'debloater', 'fixes', 'presets', 'restore', 'services', 'network', 'resources', 'games', 'appopt', 'advanced', 'bios', 'health', 'smart', 'browsers', 'apps', 'analyzer', 'drives', 'duplicates', 'oldfiles', 'privacy', 'recycle', 'settings', 'devices', 'startup', 'focus'] as const;
+const PAGES = ['home', 'general', 'debloater', 'fixes', 'presets', 'restore', 'services', 'network', 'resources', 'games', 'appopt', 'advanced', 'bios', 'health', 'smart', 'browsers', 'apps', 'analyzer', 'drives', 'duplicates', 'oldfiles', 'privacy', 'recycle', 'settings', 'devices', 'startup', 'focus', 'olddrivers', 'features'] as const;
 type Page = (typeof PAGES)[number];
 type Confirm = { title: string; body: string; confirmLabel: string; typeToConfirm?: string; resolve: (ok: boolean) => void };
 /** Tweaks the Re-Enable Defender fix reverses. */
@@ -123,6 +125,31 @@ export function App() {
   const [collapsed, setCollapsed] = useState(false);
   const [driverJob, setDriverJob] = useState<DriverJobView | null>(null);
   const [drifted, setDrifted] = useState<Array<{ id: string; name: string; risk: Risk }>>([]);
+  // Sidebar sections the user folded (remembered between runs).
+  const [foldedSections, setFolded] = useState<string[]>(() => {
+    try {
+      return JSON.parse(localStorage.getItem('foldedSections') ?? '[]') as string[];
+    } catch {
+      return [];
+    }
+  });
+  const toggleSection = (title: string) =>
+    setFolded((f) => {
+      const next = f.includes(title) ? f.filter((x) => x !== title) : [...f, title];
+      try {
+        localStorage.setItem('foldedSections', JSON.stringify(next));
+      } catch {
+        // just not remembered
+      }
+      return next;
+    });
+  // The beginner guide, reopened from Home or Settings (openGuide in Onboarding.tsx).
+  const [guide, setGuide] = useState(false);
+  useEffect(() => {
+    const show = () => setGuide(true);
+    window.addEventListener('icy:guide', show);
+    return () => window.removeEventListener('icy:guide', show);
+  }, []);
   const searchRef = useRef<HTMLInputElement>(null);
 
   const refresh = useCallback(async () => setState(await window.api.getState()), []);
@@ -220,6 +247,7 @@ export function App() {
         { id: 'focus', label: 'Focus Mode', icon: 'bolt' },
         { id: 'appopt', label: 'App Optimizer', icon: 'app' },
         { id: 'devices', label: 'Devices', icon: 'laptop' },
+        { id: 'features', label: 'Windows Features', icon: 'grid' },
         { id: 'advanced', label: 'Advanced', icon: 'chip' },
         { id: 'bios', label: 'BIOS', icon: 'board' },
       ],
@@ -237,6 +265,7 @@ export function App() {
         { id: 'oldfiles', label: 'Old Files', icon: 'restore' },
         { id: 'privacy', label: 'Privacy Traces', icon: 'globe' },
         { id: 'recycle', label: 'Recycle Bin', icon: 'trash' },
+        { id: 'olddrivers', label: 'Old Drivers', icon: 'chip' },
       ],
     },
   ];
@@ -286,12 +315,26 @@ export function App() {
         )}
 
         <nav className="flex-1 overflow-y-auto px-3 pb-3">
-          {sections.map((s) => (
+          {sections.map((s) => {
+            // A folded section still shows the page you're on, so you never lose your place.
+            const folded = !collapsed && foldedSections.includes(s.title);
+            return (
             <div key={s.title} className="pt-3">
-              {!collapsed && <div className="px-2 pb-1.5 text-xs font-medium text-slate-500">{s.title}</div>}
+              {!collapsed && (
+                <button
+                  onClick={() => toggleSection(s.title)}
+                  aria-expanded={!folded}
+                  className="flex w-full items-center gap-1.5 rounded-md px-2 pb-1.5 text-left text-xs font-medium text-slate-500 hover:text-slate-300"
+                >
+                  <Icon name="chevron" className={clsx('h-3 w-3 transition-transform', folded ? 'rotate-0' : 'rotate-90')} />
+                  <span className="flex-1">{s.title}</span>
+                  {folded && <span className="text-[11px] text-slate-600">{s.items.length}</span>}
+                </button>
+              )}
               <div className="space-y-0.5">
                 {s.items.map((n) => {
                   const active = !q && page === n.id;
+                  if (folded && !active) return null;
                   return (
                     <button
                       key={n.id}
@@ -313,7 +356,8 @@ export function App() {
                 })}
               </div>
             </div>
-          ))}
+            );
+          })}
         </nav>
 
       </aside>
@@ -440,6 +484,10 @@ export function App() {
               <DriveHealth {...pageProps} />
             ) : page === 'devices' ? (
               <Devices {...pageProps} />
+            ) : page === 'features' ? (
+              <WinFeatures {...pageProps} />
+            ) : page === 'olddrivers' ? (
+              <OldDrivers busy={busy} act={act} ask={ask} />
             ) : page === 'focus' ? (
               <Focus busy={busy} act={act} />
             ) : page === 'startup' ? (
@@ -499,11 +547,13 @@ export function App() {
           }}
         />
       )}
-      {!state.onboarded && (
+      {(!state.onboarded || guide) && (
         <Onboarding
           state={state}
+          go={(p) => go(p)}
           onDone={async () => {
-            await window.api.completeOnboarding();
+            setGuide(false);
+            if (!state.onboarded) await window.api.completeOnboarding();
             await refresh();
           }}
         />

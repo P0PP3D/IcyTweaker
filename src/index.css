@@ -15,6 +15,13 @@
   --color-slate-400: oklch(77% 0.035 256.8);
   --color-slate-500: oklch(66% 0.04 257.4);
   --color-slate-600: oklch(52% 0.043 257.3);
+  /* Chart series (validated: lightness band, colour-blind separation, contrast on the dark card). */
+  --chart-cpu: #3987e5;
+  --chart-gpu: #d95926;
+}
+:root[data-theme='light'] {
+  --chart-cpu: #2a78d6;
+  --chart-gpu: #eb6834;
 }
 
 html,

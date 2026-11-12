@@ -47,6 +47,7 @@ export const DEFAULT_FOCUS: FocusSettings = {
   custom: [],
   exceptions: [],
   reopen: true,
+  withBoost: false,
 };
 
 const EXE = /^[\w .()&+-]{1,80}\.exe$/i;
@@ -65,6 +66,7 @@ export function validateFocus(raw: unknown): FocusSettings | null {
     custom: list(r.custom),
     exceptions: [...new Set(r.exceptions.map(exe).filter((x): x is string => !!x))].slice(0, 100),
     reopen: r.reopen,
+    withBoost: r.withBoost === true,
   };
 }
 
