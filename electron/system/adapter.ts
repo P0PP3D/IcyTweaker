@@ -91,6 +91,8 @@ export interface SystemAdapter {
   removeEmptyDir(dir: string): Promise<void>;
   /** Move a file or folder to the Recycle Bin. */
   trash(target: string): Promise<void>;
+  /** Many files or folders to the Recycle Bin in one go. Returns an error message per path that failed. */
+  trashMany(targets: string[]): Promise<Map<string, string>>;
   /** Copy a file the app backed up back to where it was (privacy snapshots). Never overwrites. */
   restoreFile(from: string, to: string): Promise<void>;
   /** Dry-run: true for paths it pretended to delete, so scans stop counting them. */
@@ -586,6 +588,10 @@ export function memoryAdapter(
     async trash(target: string) {
       removed.add(key(target));
     },
+    async trashMany(targets: string[]) {
+      for (const t of targets) removed.add(key(t));
+      return new Map<string, string>();
+    },
     async restoreFile(from: string, to: string) {
       commands.push(['copy', from, to]);
     },
@@ -635,6 +641,41 @@ export function liveAdapter(): SystemAdapter {
         '-Command',
         `Add-Type -AssemblyName Microsoft.VisualBasic; [Microsoft.VisualBasic.FileIO.FileSystem]::${method}('${p}', 'OnlyErrorDialogs', 'SendToRecycleBin')`,
       ]);
+    },
+    async trashMany(targets) {
+      // One PowerShell per batch instead of one per file (each start cost about a third of a second). Paths travel as
+      // base64 UTF-8 JSON (any character, no quoting); results come back by index. Batches stay well under the
+      // command-line limit. Links are never passed here (callers only pass files their own walk found).
+      const failed = new Map<string, string>();
+      const batches: string[][] = [[]];
+      let size = 0;
+      for (const t of targets) {
+        if (size + t.length > 6000 && batches[batches.length - 1].length) {
+          batches.push([]);
+          size = 0;
+        }
+        batches[batches.length - 1].push(t);
+        size += t.length;
+      }
+      for (const batch of batches.filter((b) => b.length)) {
+        const b64 = Buffer.from(JSON.stringify(batch), 'utf8').toString('base64');
+        const script =
+          `Add-Type -AssemblyName Microsoft.VisualBasic; $l = @([Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('${b64}')) | ConvertFrom-Json | ForEach-Object { $_ }); ` + // ForEach unrolls PS 5.1's single array object
+          'for ($i = 0; $i -lt $l.Count; $i++) { $p = $l[$i]; try { ' +
+          "if ((Get-Item -LiteralPath $p -Force -ErrorAction Stop).PSIsContainer) { [Microsoft.VisualBasic.FileIO.FileSystem]::DeleteDirectory($p, 'OnlyErrorDialogs', 'SendToRecycleBin') } " +
+          "else { [Microsoft.VisualBasic.FileIO.FileSystem]::DeleteFile($p, 'OnlyErrorDialogs', 'SendToRecycleBin') }; \"OK`t$i\" } " +
+          'catch { "ERR`t$i`t$($_.Exception.Message)" } }';
+        const { stdout } = await run(POWERSHELL_EXE, ['-NoProfile', '-NonInteractive', '-Command', script], 600_000).catch((e: Error) => ({ stdout: batch.map((_, i) => `ERR\t${i}\t${e.message}`).join('\n') }));
+        const ok = new Set<number>();
+        for (const line of stdout.split(/\r?\n/)) {
+          const [tag, i, msg] = line.split('\t');
+          if (tag === 'OK') ok.add(Number(i));
+          else if (tag === 'ERR' && batch[Number(i)]) failed.set(batch[Number(i)], msg?.trim() || 'failed');
+        }
+        batch.forEach((p, i) => !ok.has(i) && !failed.has(p) && failed.set(p, 'not moved'));
+      }
+      clearReadCache();
+      return failed;
     },
     async restoreFile(from, to) {
       await mkdir(path.dirname(to), { recursive: true });

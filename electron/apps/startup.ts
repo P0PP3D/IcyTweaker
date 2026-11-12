@@ -70,6 +70,17 @@ async function logonTasks(safety: Safety) {
   }
 }
 
+/**
+ * The program a startup command runs: `"C:\x\app.exe" --tray` / `C:\x\app.exe -m` / `%ProgramFiles%\x\app.exe`.
+ * null when there's no .exe in it. Startup-folder shortcuts (.lnk) are resolved by main.
+ */
+export function exeOf(command: string, env: Record<string, string | undefined>): string | null {
+  const c = command.trim().replace(/%([^%]+)%/g, (m, v: string) => env[v] ?? env[v.toUpperCase()] ?? m);
+  const quoted = /^"([^"]+)"/.exec(c);
+  const file = quoted ? quoted[1] : /^(.+?\.exe)(?=\s|$)/i.exec(c)?.[1];
+  return file && /^[a-z]:\\.+\.exe$/i.test(file) ? file : null;
+}
+
 export function createStartup(safety: Safety, sources: Source[]) {
   const flagRef = (s: Source, name: string): SettingRef => ({ kind: 'reg', hive: s.hive, key: s.approved, name });
 

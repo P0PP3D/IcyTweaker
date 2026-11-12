@@ -230,3 +230,8 @@ Full spec: `docs/SPEC.md`. Work one phase of its "Build order" at a time.
   cache). `pathMenu` (native right-click: Show in File Explorer / Copy path). Recycle Bin read from `$I` records
   (`cleaner/recycle.ts`, Shell fallback). `walk` reads up to 16 folders at once (`dirs` still deepest first) and
   returns `lastUsedMs`. Window shown on ready-to-show + `bringToFront` (brief always-on-top: the UAC prompt holds focus).
+- 0.1.9: `adapter.trashMany` (one PowerShell per batch, results by index); `trashFound` returns `moved` and trims
+  last-scans (pages drop moved files, no rescan). Duplicates hash through `limited` (8 head / 2 full) with progress
+  and cancel. Startup: `exeOf` + main `startupExe` (.lnk via shell.readShortcutLink), `startupIcons`, `startupApp` ->
+  `debloater.findByExe` (install folder outranks icon/uninstaller folders; launcher-link uninstallers ignored; ties =
+  no match) -> `uninstallApps`. Update ready: main `updateReady` -> App banner "Restart now" (installUpdate).

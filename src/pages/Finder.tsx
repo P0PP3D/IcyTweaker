@@ -69,8 +69,15 @@ export function Duplicates({ busy, act, ask }: { busy: boolean; act: Act; ask: A
   async function remove() {
     const ok = await ask('Move duplicates to the Recycle Bin?', `${picked.size} file(s), ${formatBytes(bytes)}. One copy of every set is kept. You can restore them from the Recycle Bin.`, 'Move to Recycle Bin');
     if (!ok) return;
-    await act(() => window.api.trashFound([...picked]));
-    await scan();
+    let moved: string[] = [];
+    await act(async () => {
+      const r = await window.api.trashFound([...picked]);
+      moved = r.moved ?? [];
+      return r;
+    });
+    // Drop what moved (no new scan: that took as long as the first one).
+    const gone = new Set(moved);
+    showGroups((groups ?? []).map((g) => ({ ...g, files: g.files.filter((f) => !gone.has(f.path)) })).filter((g) => g.files.length > 1));
   }
 
   return (
@@ -210,8 +217,16 @@ export function OldFiles({ busy, act, ask }: { busy: boolean; act: Act; ask: Ask
               disabled={busy || picked.size === 0}
               onClick={async () => {
                 if (!(await ask('Move to the Recycle Bin?', `${picked.size} file(s), ${formatBytes(bytes)}. You can restore them from the Recycle Bin.`, 'Move to Recycle Bin'))) return;
-                await act(() => window.api.trashFound([...picked]));
-                await scan();
+                let moved: string[] = [];
+                await act(async () => {
+                  const r = await window.api.trashFound([...picked]);
+                  moved = r.moved ?? [];
+                  return r;
+                });
+                // Drop what moved (no new scan: that took as long as the first one).
+                const gone = new Set(moved);
+                setFiles((fs) => (fs ?? []).filter((f) => !gone.has(f.path)));
+                setPicked((s) => new Set([...s].filter((p) => !gone.has(p))));
               }}
             >
               Move picked to Recycle Bin ({formatBytes(bytes)})

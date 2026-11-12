@@ -222,6 +222,51 @@ export function createDebloater(adapter: SystemAdapter) {
       );
       return new Map(files);
     },
+    /**
+     * The installed desktop app a program file belongs to (from the last list()): its install folder holds the exe,
+     * or its icon is that exe. Never protected ones. Read-only.
+     */
+    findByExe(exe: string): AppItem | undefined {
+      const file = exe.toLowerCase();
+      const clean = (s?: string) => s?.trim().replace(/,\s*-?\d+$/, '').replace(/^"|"$/g, '').replace(/\//g, '\\').replace(/\\+$/, '').toLowerCase(); // Riot writes C:/…
+      // A folder too broad to stand for one app (many apps' uninstallers sit straight inside these).
+      const BROAD = /^[a-z]:(\\(program files( \(x86\))?|programdata|windows(\\(system32|syswow64))?|users\\[^\\]+\\appdata\\(local|roaming)(\\programs)?))?$/;
+      // Where each app lives: its install folder, else the folders of its icon and its uninstaller (many apps, like
+      // Steam or Electron apps, record no install folder).
+      const dirsOf = (e: Entry) => {
+        // Not when the uninstaller is a launcher link (steam://uninstall/…): that points at the launcher's folder,
+        // which made Steam itself match one of its games.
+        const viaLauncher = e.remove.kind === 'desktop' && /:\/\//.test(e.remove.command);
+        const unExe = e.remove.kind === 'desktop' && !viaLauncher ? clean(/^"([^"]+)"|^(.+?\.exe)(?=\s|$)/i.exec(e.remove.command.trim())?.slice(1).find(Boolean)) : undefined;
+        const icon = clean(e.where?.displayIcon);
+        // [folder, rank]: the app's own install folder outranks folders guessed from its icon or uninstaller
+        // (Valorant's uninstaller sits in Riot Client's folder).
+        const dirs: Array<[string | undefined, number]> = [
+          [clean(e.where?.installLocation), 1],
+          [icon?.endsWith('.exe') || icon?.endsWith('.ico') ? icon.slice(0, icon.lastIndexOf('\\')) : undefined, 0],
+          [unExe?.slice(0, unExe.lastIndexOf('\\')), 0],
+        ];
+        return dirs.filter((x): x is [string, number] => !!x[0] && /^[a-z]:\\/.test(x[0]) && !BROAD.test(x[0]));
+      };
+      const all = [...entries.values()].filter((e) => !e.item.protected && e.where);
+      const exact = all.filter((e) => clean(e.where!.displayIcon) === file);
+      if (exact.length === 1) return exact[0].item;
+      // The most specific folder wins (an app inside a vendor's shared folder). Two different apps tied on the same
+      // folder: no answer (uninstalling the wrong app is worse than none).
+      let best = 0;
+      let hits = new Set<AppItem>();
+      for (const e of all)
+        for (const [d, rank] of dirsOf(e)) {
+          const score = d.length * 2 + rank;
+          if (!file.startsWith(`${d}\\`) || score < best) continue;
+          if (score > best) hits = new Set();
+          best = score;
+          hits.add(e.item);
+        }
+      return hits.size === 1 ? [...hits][0] : undefined;
+    },
+    /** True once list() has run. */
+    listed: () => entries.size > 0,
     /** Only keys from the last list(), never protected ones. */
     lookup(key: unknown): Entry | undefined {
       const e = typeof key === 'string' ? entries.get(key) : undefined;

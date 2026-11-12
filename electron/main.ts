@@ -5,7 +5,7 @@ import { createCleaner, driveHealth, type Env } from './cleaner/cleaner';
 import os from 'node:os';
 import path from 'node:path';
 import { spawn } from 'node:child_process';
-import type { Accent, LastScans, ProcessView, RecycleItem, AppSettings, CleanResult, DriverJobView, FrametimeResult, GameValues, InvokeApi, NetAdapterView, Progress, ServiceInfo, ServiceLevel, ServiceStartType } from '../shared/types';
+import type { Accent, LastScans, ProcessView, RecycleItem, AppSettings, CleanResult, DriverJobView, FrametimeResult, GameValues, InvokeApi, NetAdapterView, Progress, ServiceInfo, ServiceLevel, ServiceStartType, StartupItemView } from '../shared/types';
 import { POWERSHELL_EXE, SHUTDOWN_EXE, createSystemAdapter, isLiveEnv, liveAdapter, REG_EXE, runningProcesses, sz, type SettingRef } from './system/adapter';
 import { createProcessSampler, queryProcesses } from './system/processes';
 import { WPT_INSTALL_ARGS, XPERF, latencyCheck, traceDrivers } from './system/latency';
@@ -53,7 +53,7 @@ import { cpuMeter, createSessionRecorder } from './games/session';
 import { memoryLists, purgeStandby } from './system/memory';
 
 const ACCENTS: Accent[] = ['blue', 'cyan', 'violet', 'emerald', 'indigo'];
-import { createStartup, startupSources } from './apps/startup';
+import { createStartup, exeOf, startupSources } from './apps/startup';
 import { RUNTIMES, installRuntimes, wingetPath } from './resources/runtimes';
 import { LATENCY_TARGETS, dnsBenchmark, latencyTest, tcpProbe, validHost } from './network/tests';
 import { appendFile, copyFile, mkdir, readdir, readFile, writeFile } from 'node:fs/promises';
@@ -230,6 +230,18 @@ app.whenReady().then(async () => {
     const appIconCache = new Map<string, string | null>(); // icon file -> data URL (Debloater)
     const startup = createStartup(safety, startupSources({ APPDATA: env.APPDATA!, ProgramData: cleanerEnv.ProgramData }));
     let startupIds = new Map<string, boolean>(); // id -> requiresAdmin, from the last listStartup()
+    let startupCmds = new Map<string, StartupItemView>(); // the same items, for icons and Uninstall
+    /** The program a startup item runs (a startup-folder shortcut is resolved to its target). */
+    const startupExe = (i: StartupItemView): string | null => {
+      if (/\.lnk$/i.test(i.command)) {
+        try {
+          return exeOf(`"${shell.readShortcutLink(i.command).target}"`, process.env);
+        } catch {
+          return null;
+        }
+      }
+      return exeOf(i.command, process.env);
+    };
     let netTestRunning = false;
     let pendingConfig: ConfigFile | null = null; // from the last readConfig()
     // Last scans (Disk Analyzer overview, duplicates, old files, cleaner sizes), kept so each page shows its last
@@ -635,6 +647,7 @@ app.whenReady().then(async () => {
     const [repoOwner, repoName] = (pkg.updateRepo ?? '').split('/');
     const canAutoUpdate = app.isPackaged && !!repoOwner && !!repoName;
     let updateDownloaded = false;
+    let readyVersion: string | null = null; // the downloaded update, for the in-app "Restart now" banner
     const applyAutoUpdate = () => {
       autoUpdater.autoDownload = settings.app.autoUpdate;
       autoUpdater.autoInstallOnAppQuit = settings.app.autoUpdate;
@@ -644,8 +657,9 @@ app.whenReady().then(async () => {
       applyAutoUpdate();
       autoUpdater.on('download-progress', (p) => progress({ task: 'update', done: p.transferred, total: p.total, current: 'IcyTweaker update' }));
       autoUpdater.on('update-downloaded', (info) => {
-        if (!updateDownloaded) notify(`IcyTweaker ${info.version} downloaded`, 'It installs when you quit IcyTweaker, or restart now from Settings > Updates.');
+        if (!updateDownloaded) notify(`IcyTweaker ${info.version} is ready`, 'Click "Restart now" in IcyTweaker to install it and reopen the app.');
         updateDownloaded = true;
+        readyVersion = info.version;
         progress({ task: 'update', done: 1, total: 1, current: '' });
       });
       const autoCheck = () => {
@@ -848,6 +862,9 @@ app.whenReady().then(async () => {
           return { ok: false, message: `Update download failed: ${(err as Error).message}` };
         }
       },
+
+      /** The version of a downloaded update waiting to be installed, or null. */
+      updateReady: async () => readyVersion,
 
       async installUpdate() {
         if (!canAutoUpdate || !updateDownloaded) return;
@@ -1623,20 +1640,34 @@ app.whenReady().then(async () => {
       async trashFound(paths: unknown) {
         const list = Array.isArray(paths) ? paths : [];
         if (list.length === 0 || list.some((p) => typeof p !== 'string' || !foundPaths.has(path.resolve(p).toLowerCase()) || isProtected(p) || keptOut(p))) return { ok: false, message: 'Invalid request.' };
-        const failed: string[] = [];
-        for (const p of list as string[]) {
-          try {
-            await adapter.trash(p);
-            await safety.log('trash', p, true, live ? undefined : 'dry-run: not moved');
-          } catch (err) {
-            failed.push(`${path.basename(p)}: ${(err as Error).message}`);
-            await safety.log('trash', p, false, (err as Error).message);
-          }
+        progress({ task: 'bulk', label: 'Moving to the Recycle Bin', done: 0, total: 0, current: `${list.length} file(s)` });
+        let errors = new Map<string, string>();
+        try {
+          errors = await adapter.trashMany(list as string[]); // one PowerShell per batch, not one per file
+          for (const p of list as string[]) await safety.log('trash', p, !errors.has(p), errors.get(p) ?? (live ? undefined : 'dry-run: not moved'));
+        } catch (err) {
+          errors = new Map((list as string[]).map((p) => [p, (err as Error).message]));
+        } finally {
+          progress({ task: 'bulk', done: 0, total: 0, current: '' });
         }
-        const done = list.length - failed.length;
+        const failed = [...errors].map(([p, e]) => `${path.basename(p)}: ${e}`);
+        // Drop what moved from the saved results, so the pages update without a new scan.
+        const moved = (list as string[]).filter((p) => !errors.has(p));
+        const gone = new Set(moved.map((p) => path.resolve(p).toLowerCase()));
+        const stays = (p: string) => !gone.has(path.resolve(p).toLowerCase());
+        if (live) {
+          const d = lastScans.duplicates;
+          const o = lastScans.oldfiles;
+          saveLast({
+            ...(d && { duplicates: { ...d, groups: d.groups.map((g) => ({ ...g, files: g.files.filter((f) => stays(f.path)) })).filter((g) => g.files.length > 1) } }),
+            ...(o && { oldfiles: { ...o, files: o.files.filter((f) => stays(f.path)) } }),
+          });
+          refreshFound();
+        }
+        const done = moved.length;
         return failed.length
-          ? { ok: false, message: `${done} moved to the Recycle Bin. Failed: ${failed.join(' | ')}` }
-          : { ok: true, message: `${done} file(s) ${live ? 'moved to the Recycle Bin' : 'would be moved to the Recycle Bin (dry-run)'}.` };
+          ? { ok: false, moved, message: `${done} moved to the Recycle Bin. Failed: ${failed.join(' | ')}` }
+          : { ok: true, moved, message: `${done} file(s) ${live ? 'moved to the Recycle Bin' : 'would be moved to the Recycle Bin (dry-run)'}.` };
       },
 
       // ---- Privacy traces
@@ -1676,10 +1707,40 @@ app.whenReady().then(async () => {
         try {
           const items = await startup.list();
           startupIds = new Map(items.map((i) => [i.id, i.requiresAdmin]));
+          startupCmds = new Map(items.map((i) => [i.id, i]));
           return { items };
         } catch (err) {
           return { items: [], error: `Could not read startup items: ${(err as Error).message}` };
         }
+      },
+
+      /** Icons for the last listed startup items: id -> data URL (null: no program file found). Read-only. */
+      async startupIcons() {
+        const out: Record<string, string | null> = {};
+        await Promise.all(
+          [...startupCmds.values()].map(async (i) => {
+            const file = startupExe(i);
+            if (file && !appIconCache.has(file)) {
+              const img = existsSync(file) ? await app.getFileIcon(file, { size: 'normal' }).catch(() => null) : null;
+              appIconCache.set(file, img && !img.isEmpty() ? img.resize({ width: 32, height: 32, quality: 'best' }).toDataURL() : null);
+            }
+            out[i.id] = file ? (appIconCache.get(file) ?? null) : null;
+          }),
+        );
+        return out;
+      },
+
+      /**
+       * The installed app behind a startup item, for Uninstall (from the Debloater's own listing, never protected
+       * apps). The renderer then confirms and calls uninstallApps with that key (restore point first).
+       */
+      async startupApp(id: unknown) {
+        const item = typeof id === 'string' ? startupCmds.get(id) : undefined;
+        const file = item && startupExe(item);
+        if (!file) return null;
+        if (!debloater.listed()) await debloater.list().catch(() => []);
+        const app = debloater.findByExe(file);
+        return app ? { key: app.key, name: app.name, interactive: app.interactive } : null;
       },
 
       async setStartupItem(id: unknown, enabled: unknown) {

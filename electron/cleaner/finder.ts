@@ -38,11 +38,32 @@ function fullHash(file: string): Promise<string | null> {
   });
 }
 
+/** Runs `fn` over items, at most `n` at a time (disk reads: a few at once is fastest; hundreds at once thrash). */
+async function limited<T, R>(items: T[], n: number, fn: (x: T) => Promise<R>): Promise<R[]> {
+  const out: R[] = new Array(items.length);
+  let next = 0;
+  await Promise.all(
+    Array.from({ length: Math.min(n, items.length) }, async () => {
+      while (next < items.length) {
+        const i = next++;
+        out[i] = await fn(items[i]);
+      }
+    }),
+  );
+  return out;
+}
+
 /** Groups items by key, keeping groups of two or more. */
-async function regroup<T>(items: T[], key: (x: T) => Promise<string | null>): Promise<T[][]> {
-  const m = new Map<string, T[]>();
-  const keys = await Promise.all(items.map(key)); // reads in parallel (same-size groups are small)
-  items.forEach((x, i) => keys[i] !== null && m.set(keys[i]!, [...(m.get(keys[i]!) ?? []), x]));
+async function regroup(items: string[], key: (x: string) => Promise<string | null>, n: number): Promise<string[][]> {
+  const m = new Map<string, string[]>();
+  const keys = await limited(items, n, key);
+  items.forEach((x, i) => {
+    const k = keys[i];
+    if (k === null) return;
+    const g = m.get(k);
+    if (g) g.push(x);
+    else m.set(k, [x]);
+  });
   return [...m.values()].filter((g) => g.length > 1);
 }
 
@@ -54,12 +75,31 @@ export async function findDuplicates(
   let n = 0;
   const { files } = await walk(root, { skip: o.skip, cancelled: o.cancelled, onFile: (f) => ++n % 500 === 0 && o.onProgress?.(n, f.path) });
   const bySize = new Map<number, string[]>();
-  for (const f of files) if (f.size >= minSize) bySize.set(f.size, [...(bySize.get(f.size) ?? []), f.path]);
+  for (const f of files) {
+    if (f.size < minSize) continue;
+    const g = bySize.get(f.size);
+    if (g) g.push(f.path);
+    else bySize.set(f.size, [f.path]);
+  }
+  // Comparing phase: reported too, so a long hash of big files doesn't look stuck. Cancel is checked per file.
+  const candidates = [...bySize.values()].filter((p) => p.length > 1).reduce((a, p) => a + p.length, 0);
+  let compared = 0;
+  let last = 0;
+  const step = <T>(fn: (p: string) => Promise<T | null>) => async (p: string) => {
+    if (o.cancelled?.()) return null;
+    const r = await fn(p);
+    if (Date.now() - last > 250) {
+      last = Date.now();
+      o.onProgress?.(n, `Comparing ${compared} of ${candidates}: ${p}`);
+    }
+    return r;
+  };
   const groups: DuplicateGroup[] = [];
   for (const [size, paths] of bySize) {
     if (paths.length < 2 || o.cancelled?.()) continue;
-    for (const sameHead of await regroup(paths, headHash)) {
-      for (const same of await regroup(sameHead, fullHash)) {
+    compared += paths.length;
+    for (const sameHead of await regroup(paths, step(headHash), 8)) {
+      for (const same of await regroup(sameHead, step(fullHash), 2)) {
         const withTimes = await Promise.all(same.map(async (p) => ({ path: p, modified: (await stat(p).catch(() => null))?.mtime.toISOString() ?? '' })));
         groups.push({ size, files: withTimes, wasted: size * (same.length - 1) });
       }

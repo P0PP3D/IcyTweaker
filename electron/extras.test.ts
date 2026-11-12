@@ -7,7 +7,8 @@ import { presets } from './tweaks/presets';
 import { TWEAK_TAGS, hasTag } from './tweaks/tags';
 import { buildTargets } from './cleaner/cleaner';
 import { DEFAULT_FOCUS, createFocus, parseAppChoices, validateFocus } from './games/focus';
-import { createStartup, parseLogonTasks, startupSources } from './apps/startup';
+import { createStartup, exeOf, parseLogonTasks, startupSources } from './apps/startup';
+import { createDebloater } from './system/debloat';
 import { parseBoot } from './system/boot';
 import path from 'node:path';
 import { afterAll, describe, expect, it } from 'vitest';
@@ -443,5 +444,48 @@ describe('walk', () => {
     expect(i('a/b')).toBeLessThan(i('a'));
     expect(r.dirs).toHaveLength(4);
     expect(r.files[0].lastUsedMs).toBeGreaterThan(0);
+  });
+});
+
+describe('startup app icons and uninstall', () => {
+  const env = { ProgramFiles: 'C:\\Program Files', LOCALAPPDATA: 'C:\\Users\\me\\AppData\\Local' };
+  it('finds the program a startup command runs', () => {
+    expect(exeOf('"C:\\Program Files\\Steam\\steam.exe" -silent', env)).toBe('C:\\Program Files\\Steam\\steam.exe');
+    expect(exeOf('C:\\Tools\\agent.exe /min', env)).toBe('C:\\Tools\\agent.exe');
+    expect(exeOf('%LOCALAPPDATA%\\Discord\\Update.exe --processStart Discord.exe', env)).toBe('C:\\Users\\me\\AppData\\Local\\Discord\\Update.exe');
+    expect(exeOf('rundll32.exe shell32.dll,Control_RunDLL', env)).toBeNull(); // no full path
+    expect(exeOf('"C:\\x\\script.cmd"', env)).toBeNull();
+  });
+  it('matches a program file to its installed app, the most specific folder first, never protected ones', async () => {
+    const desktop = [
+      { key: 'HKLM\\A', DisplayName: 'Vendor Suite', UninstallString: 'u.exe', InstallLocation: 'C:\\Program Files\\Vendor' },
+      { key: 'HKLM\\B', DisplayName: 'Vendor Agent', UninstallString: 'u.exe', InstallLocation: '"C:\\Program Files\\Vendor\\Agent\\"' },
+      { key: 'HKLM\\C', DisplayName: 'Spotify', UninstallString: 'u.exe', DisplayIcon: 'C:\\Users\\me\\AppData\\Roaming\\Spotify\\Spotify.exe,0' },
+      { key: 'HKLM\\D', DisplayName: 'Microsoft Edge', UninstallString: 'u.exe', InstallLocation: 'C:\\Program Files (x86)\\Microsoft\\Edge\\Application' },
+    ];
+    const fake = memoryAdapter(undefined, async () => JSON.stringify({ desktop }));
+    const d = createDebloater(fake);
+    expect(d.listed()).toBe(false);
+    await d.list();
+    expect(d.findByExe('C:\\Program Files\\Vendor\\Agent\\agent.exe')?.name).toBe('Vendor Agent');
+    expect(d.findByExe('C:\\Program Files\\Vendor\\suite.exe')?.name).toBe('Vendor Suite');
+    expect(d.findByExe('C:\\Users\\me\\AppData\\Roaming\\Spotify\\Spotify.exe')?.name).toBe('Spotify');
+    expect(d.findByExe('C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe')).toBeUndefined(); // protected
+    expect(d.findByExe('C:\\Other\\x.exe')).toBeUndefined();
+  });
+  it('never matches a launcher to one of its games, and an install folder beats another app uninstaller folder', async () => {
+    const desktop = [
+      { key: 'HKLM\\S', DisplayName: 'Steam', UninstallString: 'C:\\Program Files (x86)\\Steam\\uninstall.exe' },
+      { key: 'HKLM\\G', DisplayName: 'Some Game', UninstallString: '"C:\\Program Files (x86)\\Steam\\steam.exe" steam://uninstall/123', DisplayIcon: 'C:\\Program Files (x86)\\Steam\\steam\\games\\a.ico' },
+      { key: 'HKCU\\R', DisplayName: 'Riot Client', UninstallString: '"C:\\Riot Games\\Riot Client\\RiotClientServices.exe" --uninstall-product=Riot_Client', InstallLocation: 'C:/Riot Games/Riot Client/' },
+      { key: 'HKCU\\V', DisplayName: 'VALORANT', UninstallString: '"C:\\Riot Games\\Riot Client\\RiotClientServices.exe" --uninstall-product=valorant', InstallLocation: 'C:\\Riot Games\\VALORANT\\live' },
+      { key: 'HKLM\\X', DisplayName: 'Shared A', UninstallString: '"C:\\Shared\\Tools\\un.exe" /a' },
+      { key: 'HKLM\\Y', DisplayName: 'Shared B', UninstallString: '"C:\\Shared\\Tools\\un.exe" /b' },
+    ];
+    const d = createDebloater(memoryAdapter(undefined, async () => JSON.stringify({ desktop })));
+    await d.list();
+    expect(d.findByExe('C:\\Program Files (x86)\\Steam\\steam.exe')?.name).toBe('Steam');
+    expect(d.findByExe('C:\\Riot Games\\Riot Client\\RiotClientServices.exe')?.name).toBe('Riot Client');
+    expect(d.findByExe('C:\\Shared\\Tools\\agent.exe')).toBeUndefined(); // two apps tie: no answer
   });
 });

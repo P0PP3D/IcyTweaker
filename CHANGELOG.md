@@ -2,6 +2,20 @@
 
 Each section becomes the description of its GitHub release (see .github/workflows/release-notes.yml).
 
+## v0.1.9
+
+**New**
+- **"Restart now" banner when an update is ready:** one click installs it and reopens IcyTweaker. Updates still install by themselves when you quit, but then the app stays closed.
+- **Startup Apps shows each app's icon.**
+- **Sidebar sections fold and unfold smoothly** instead of jumping.
+- **Uninstall from Startup Apps:** removes the program itself from your PC (with a restore point first), next to "Remove from startup", which only stops it starting with Windows.
+
+**Faster**
+- Moving files to the Recycle Bin from Old Files and Duplicate Finder: all at once instead of one by one, and the list updates straight away instead of scanning your drive again.
+
+**Fixed**
+- Duplicate Finder no longer seems stuck: it shows its progress while comparing files, compares a few at a time instead of all at once, and Cancel works during that step.
+
 ## v0.1.8
 
 **Changed**

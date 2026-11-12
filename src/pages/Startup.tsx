@@ -52,7 +52,12 @@ export function Startup({ busy, act, ask }: { busy: boolean; act: Act; ask: Ask 
   const [res, setRes] = useState<{ items: StartupItemView[]; error?: string } | null>(null);
   const [boot, setBoot] = useState<{ info?: BootInfo; error?: string } | null>(null);
   const [filter, setFilter] = useState('');
-  const load = useCallback(async () => setRes(await window.api.listStartup()), []);
+  const [icons, setIcons] = useState<Record<string, string | null>>({});
+  const [finding, setFinding] = useState<string | null>(null); // item whose app is being looked up for Uninstall
+  const load = useCallback(async () => {
+    setRes(await window.api.listStartup());
+    void window.api.startupIcons().then(setIcons, () => {}); // after the list, so the list never waits on icons
+  }, []);
   useEffect(() => void load(), [load]);
   useEffect(() => void window.api.bootInfo().then(setBoot), []);
 
@@ -80,6 +85,29 @@ export function Startup({ busy, act, ask }: { busy: boolean; act: Act; ask: Ask 
     );
     if (!ok) return;
     await act(() => window.api.setStartupItems(ids, enabled));
+    await load();
+  }
+
+  /** Uninstall the program itself (Debloater's uninstaller, restore point first). */
+  async function uninstall(i: StartupItemView) {
+    setFinding(i.id);
+    const found = await window.api.startupApp(i.id).catch(() => null);
+    setFinding(null);
+    if (!found) {
+      await ask(
+        `${i.name}: no installed app found`,
+        `IcyTweaker couldn't match this startup item to an app it can uninstall (it may be part of Windows, a driver's helper, or a portable program).\n\nYou can still turn it off or delete it from startup here.`,
+        'OK',
+      );
+      return;
+    }
+    const ok = await ask(
+      `Uninstall ${found.name}?`,
+      `Removes ${found.name} from this PC, not just from startup. A restore point is made first.${found.interactive ? `\n\n${found.name}'s own uninstaller window will open: follow its steps.` : ''}`,
+      'Uninstall',
+    );
+    if (!ok) return;
+    await act(() => window.api.uninstallApps([found.key]));
     await load();
   }
 
@@ -132,7 +160,13 @@ export function Startup({ busy, act, ask }: { busy: boolean; act: Act; ask: Ask 
         <ul className="divide-y divide-[var(--line)] rounded-xl bg-[var(--card)] ring-1 ring-[var(--line)]">
           {items.map((i) => (
             <li key={i.id} className="flex items-center gap-3 px-4 py-2.5">
-              <Icon name={KIND[i.kind].icon} className={clsx('h-4 w-4 shrink-0', i.enabled ? 'text-sky-300' : 'text-slate-500')} />
+              {icons[i.id] ? (
+                <img src={icons[i.id]!} alt="" className={clsx('h-7 w-7 shrink-0 rounded', !i.enabled && 'opacity-40 grayscale')} />
+              ) : (
+                <span className="grid h-7 w-7 shrink-0 place-items-center rounded bg-white/5">
+                  <Icon name={KIND[i.kind].icon} className={clsx('h-4 w-4', i.enabled ? 'text-sky-300' : 'text-slate-500')} />
+                </span>
+              )}
               <div className="min-w-0 flex-1">
                 <div className="flex flex-wrap items-center gap-2">
                   <span className="text-sm font-medium text-slate-100">{i.name}</span>
@@ -150,11 +184,20 @@ export function Startup({ busy, act, ask }: { busy: boolean; act: Act; ask: Ask 
               </div>
               <span className={clsx('w-14 text-right text-xs', i.enabled ? 'text-emerald-300' : 'text-slate-500')}>{i.enabled ? 'Starts' : 'Off'}</span>
               <Toggle on={i.enabled} label={`Start ${i.name} with Windows`} disabled={busy} onChange={(v) => act(() => window.api.setStartupItem(i.id, v)).then(load)} />
+              <button
+                disabled={busy || finding !== null}
+                onClick={() => void uninstall(i)}
+                title="Remove the program from this PC"
+                className="inline-flex w-20 items-center justify-end gap-1 text-xs text-slate-300 hover:text-slate-100 disabled:opacity-40"
+              >
+                {finding === i.id && <span className="h-3 w-3 animate-spin rounded-full border-2 border-sky-500/25 border-t-sky-400" aria-hidden />}
+                Uninstall
+              </button>
               {i.kind === 'task' ? (
-                <span className="w-16" title="Scheduled tasks can only be turned off: their definition can't be backed up." />
+                <span className="w-24" title="Scheduled tasks can only be turned off: their definition can't be backed up." />
               ) : (
-                <button disabled={busy} onClick={() => void remove(i)} className="w-16 text-right text-xs text-rose-300 hover:text-rose-200 disabled:opacity-40">
-                  Delete
+                <button disabled={busy} onClick={() => void remove(i)} title="Remove it from startup only" className="w-24 text-right text-xs text-rose-300 hover:text-rose-200 disabled:opacity-40">
+                  Remove from startup
                 </button>
               )}
             </li>

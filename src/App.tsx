@@ -187,6 +187,13 @@ export function App() {
   // Launch-time re-check: tweaks the app applied that Windows has since undone.
   useEffect(() => void window.api.drifted().then(setDrifted), []);
   const [winUpdate, setWinUpdate] = useState<{ from: string; to: string } | null>(null);
+  // A downloaded IcyTweaker update: banner with Restart now (installing on quit never reopens the app).
+  const [appUpdate, setAppUpdate] = useState<string | null>(null);
+  const [installing, setInstalling] = useState(false);
+  useEffect(() => {
+    void window.api.updateReady().then(setAppUpdate);
+    return window.api.onProgress((p) => p.task === 'update' && !p.current && p.total > 0 && void window.api.updateReady().then(setAppUpdate));
+  }, []);
   useEffect(() => void window.api.windowsUpdateInfo().then(setWinUpdate), []);
   useEffect(() => void window.api.getSettings().then(applyTheme), []);
   // Remember the page between runs.
@@ -360,19 +367,28 @@ export function App() {
                   {folded && <span className="text-[11px] text-slate-600">{s.items.length}</span>}
                 </button>
               )}
-              <div className="space-y-0.5">
+              <div>
                 {s.items.map((n) => {
                   const active = !q && page === n.id;
-                  if (folded && !active) return null;
+                  // Folding slides each item's height to zero and fades it (grid rows 1fr -> 0fr animate smoothly).
+                  // Always animated, like the spinners: short, and many users have Windows animations off.
+                  const hidden = folded && !active;
                   return (
-                    <button
+                    <div
                       key={n.id}
+                      className="grid transition-[grid-template-rows,opacity] duration-200 ease-out"
+                      style={{ gridTemplateRows: hidden ? '0fr' : '1fr', opacity: hidden ? 0 : 1 }}
+                      aria-hidden={hidden || undefined}
+                      inert={hidden || undefined}
+                    >
+                    <div className="min-h-0 overflow-hidden">
+                    <button
                       onClick={() => go(n.id)}
                       title={collapsed ? n.label : undefined}
                       aria-label={n.label}
                       aria-current={active ? 'page' : undefined}
                       className={clsx(
-                        'flex w-full items-center gap-3 rounded-lg py-2 text-left text-sm transition',
+                        'mb-0.5 flex w-full items-center gap-3 rounded-lg py-2 text-left text-sm transition',
                         collapsed ? 'justify-center px-0' : 'px-2.5',
                         active ? 'nav-active text-slate-50' : 'text-slate-300 hover:bg-white/[0.04] hover:text-slate-100',
                       )}
@@ -381,6 +397,8 @@ export function App() {
                       {!collapsed && <span className="flex-1 truncate">{n.label}</span>}
                       {!collapsed && n.count && <span className="rounded-md border border-[var(--line)] bg-white/[0.04] px-1.5 text-xs text-slate-400">{n.count}</span>}
                     </button>
+                    </div>
+                    </div>
                   );
                 })}
               </div>
@@ -396,6 +414,21 @@ export function App() {
         <main className="flex-1 overflow-y-auto rounded-tl-2xl border-l border-t border-[var(--line)] bg-[var(--panel)]">
           <div className="mx-auto max-w-5xl space-y-4 p-6">
             {!state.live && <Banner tone="info">Dry-run mode: changes are simulated in memory and nothing is written to Windows.</Banner>}
+            {appUpdate && (
+              <Banner tone="info">
+                <span>IcyTweaker {appUpdate} is ready. Restart to install it; the app reopens by itself.</span>
+                <Button
+                  primary
+                  disabled={installing}
+                  onClick={() => {
+                    setInstalling(true);
+                    void window.api.installUpdate();
+                  }}
+                >
+                  {installing ? 'Restarting…' : 'Restart now'}
+                </Button>
+              </Banner>
+            )}
             {winUpdate && drifted.length === 0 && (
               <Banner tone="info">
                 <span>

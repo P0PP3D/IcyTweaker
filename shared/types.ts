@@ -919,6 +919,8 @@ export interface OptimizerApi {
   checkUpdates(): Promise<UpdateInfo>;
   openUpdatePage(): Promise<void>;
   downloadUpdate(): Promise<ActionReport>;
+  /** A downloaded update's version, waiting to be installed, or null. */
+  updateReady(): Promise<string | null>;
   /** Closes IcyTweaker and installs the downloaded update. */
   installUpdate(): Promise<void>;
   /** Puts back every setting the app first changed at or after `savedAt` (newest first), behind a restore point. */
@@ -973,7 +975,8 @@ export interface OptimizerApi {
   findOldFiles(root: string, days: number): Promise<{ files: OldFile[]; error?: string }>;
   cancelFind(): Promise<void>;
   /** Moves files from the last duplicate / old-files scan to the Recycle Bin. */
-  trashFound(paths: string[]): Promise<ActionReport>;
+  /** `moved`: the paths that went to the Recycle Bin (the page drops them without a new scan). */
+  trashFound(paths: string[]): Promise<ActionReport & { moved?: string[] }>;
   privacyTraces(): Promise<PrivacyTraceView[]>;
   clearPrivacy(ids: string[]): Promise<ActionReport>;
   privacySnapshots(): Promise<PrivacySnapshot[]>;
@@ -986,6 +989,10 @@ export interface OptimizerApi {
   getBoost(): Promise<BoostState>;
   setBoost(settings: BoostState['settings']): Promise<BoostState>;
   listStartup(): Promise<{ items: StartupItemView[]; error?: string }>;
+  /** Icons of the last listed startup items: id -> data URL or null. */
+  startupIcons(): Promise<Record<string, string | null>>;
+  /** The installed app a startup item belongs to (for Uninstall), or null if none was found. */
+  startupApp(id: string): Promise<{ key: string; name: string; interactive: boolean } | null>;
   setStartupItem(id: string, enabled: boolean): Promise<ActionReport>;
   /** Many at once (restore point first). */
   setStartupItems(ids: string[], enabled: boolean): Promise<ActionReport>;
