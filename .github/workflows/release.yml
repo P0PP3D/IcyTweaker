@@ -31,27 +31,35 @@ jobs:
       - run: npm test
       - run: npm run build
 
-      - name: Build installer and publish the release
+      # Builds only (publish never): electron-builder's own publishing uploaded in parallel and created TWO releases per
+      # tag (one with the installer + latest.yml, one with just the .blockmap). latest.yml is still written.
+      - name: Build installer
         run: node scripts/dist.mjs
-        env:
-          PUBLISH: always
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      # electron-builder has finished "successfully" with files missing from the release (the .blockmap on every
-      # release so far, the installer once). Upload whatever is missing from release/, then insist all three are there.
-      - name: Make sure the release has all three files
+      # One release, created in one step with all three files. First removes any release already made for this tag
+      # (drafts left by re-runs included) and the broken duplicates that hold only a .blockmap.
+      - name: Publish the release
         shell: bash
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           v="${GITHUB_REF_NAME#v}"
-          files=("IcyTweaker-Setup-$v.exe" "IcyTweaker-Setup-$v.exe.blockmap" "latest.yml")
-          have() { gh release view "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --json assets --jq '.assets[].name' | grep -qxF "$1"; }
-          for f in "${files[@]}"; do
-            if ! have "$f"; then
-              echo "Uploading missing $f"
-              gh release upload "$GITHUB_REF_NAME" "release/$f" --repo "$GITHUB_REPOSITORY" --clobber
-            fi
+          gh api "repos/$GITHUB_REPOSITORY/releases?per_page=100" \
+            --jq ".[] | select(.tag_name == \"$GITHUB_REF_NAME\" or ((.assets | length) == 1 and (.assets[0].name | endswith(\".blockmap\")))) | .id" |
+            while read -r id; do echo "Removing old release $id"; gh api -X DELETE "repos/$GITHUB_REPOSITORY/releases/$id"; done
+          gh release create "$GITHUB_REF_NAME" \
+            "release/IcyTweaker-Setup-$v.exe" "release/IcyTweaker-Setup-$v.exe.blockmap" "release/latest.yml" \
+            --repo "$GITHUB_REPOSITORY" --title "IcyTweaker $v" --latest \
+            --notes "Download **IcyTweaker-Setup-$v.exe** below and run it. Installed copies update themselves."
+
+      - name: Check the release has all three files
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          v="${GITHUB_REF_NAME#v}"
+          names=$(gh release view "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --json assets --jq '.assets[].name')
+          echo "$names"
+          for f in "IcyTweaker-Setup-$v.exe" "IcyTweaker-Setup-$v.exe.blockmap" latest.yml; do
+            echo "$names" | grep -qxF "$f" || { echo "::error::Release is missing $f"; exit 1; }
           done
-          for f in "${files[@]}"; do have "$f" || { echo "::error::Release is still missing $f"; exit 1; }; done
-          echo "All three files are on the release."

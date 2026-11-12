@@ -7,7 +7,8 @@ import { readFileSync } from 'node:fs';
 
 const pkg = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8'));
 const [owner, repo] = (pkg.updateRepo ?? '').split('/');
-// PUBLISH=always (the GitHub release workflow only, with GH_TOKEN) uploads straight to a published release.
+// PUBLISH=always lets electron-builder upload itself. Not used: it created two releases per tag (parallel uploads);
+// the release workflow builds with publish never and uploads all three files with one gh release create.
 const publish = process.env.PUBLISH === 'always' ? 'always' : 'never';
 const args = ['electron-builder', '--win', 'nsis', '--x64', '--publish', publish];
 if (owner && repo) args.push(`-c.publish.provider=github`, `-c.publish.owner=${owner}`, `-c.publish.repo=${repo}`, '-c.publish.releaseType=release');
