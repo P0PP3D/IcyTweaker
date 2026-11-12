@@ -45,7 +45,7 @@ export function Button({
       onClick={onClick}
       disabled={disabled}
       className={clsx(
-        'inline-flex items-center gap-2 rounded-lg px-3.5 py-1.5 text-sm font-medium transition disabled:cursor-not-allowed disabled:opacity-40',
+        'inline-flex items-center gap-2 rounded-lg px-3.5 py-1.5 text-sm font-medium tabular-nums transition disabled:cursor-not-allowed disabled:opacity-40',
         danger
           ? 'bg-rose-500/20 text-rose-100 ring-1 ring-rose-400/50 hover:bg-rose-500/30'
           : primary

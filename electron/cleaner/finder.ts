@@ -111,10 +111,10 @@ export async function findDuplicates(
 /** Large files not opened or changed for `days`. Uses the later of last access and last write (access times are often not updated). */
 export async function findOldFiles(
   root: string,
-  o: { days?: number; minSize?: number; skip?: (p: string) => boolean; cancelled?: () => boolean } = {},
+  o: { days?: number; minSize?: number; skip?: (p: string) => boolean; cancelled?: () => boolean; onFile?: (f: { path: string }) => void } = {},
 ): Promise<OldFile[]> {
   const cutoff = Date.now() - (o.days ?? 180) * 86_400_000;
-  const { files } = await walk(root, { skip: o.skip, cancelled: o.cancelled });
+  const { files } = await walk(root, { skip: o.skip, cancelled: o.cancelled, onFile: o.onFile });
   const out: OldFile[] = [];
   for (const f of files) {
     if (f.size < (o.minSize ?? 50 * 1024 * 1024)) continue;

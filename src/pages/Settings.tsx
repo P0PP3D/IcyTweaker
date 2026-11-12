@@ -6,6 +6,8 @@ import { Button, FeatureCard, RISK_STYLE, Badge, Toggle, type Ask } from '../ui'
 import type { Act } from './General';
 import { ACCENTS, applyTheme } from '../theme';
 import { openGuide } from '../Onboarding';
+import gubbyImage from '../assets/gubby/gubby.webp';
+import gubbySound from '../assets/gubby/is-that-a-gubby.mp3';
 
 function Switch({ on, label, onChange, disabled }: { on: boolean; label: string; onChange: (v: boolean) => void; disabled?: boolean }) {
   return (
@@ -224,6 +226,38 @@ export function Settings({ state, busy, act, ask }: { state: AppState; busy: boo
           Undo all changes ({state.backupCount})
         </Button>
       </div>
+      <Gubby />
     </section>
+  );
+}
+
+/** Easter egg: an invisible button in the bottom left of Settings brings out Gubby, who speaks when clicked. */
+function Gubby() {
+  const [shown, setShown] = useState(false);
+  const [talking, setTalking] = useState(0); // bumps on each click to replay the wiggle
+  const speak = () => {
+    const a = new Audio(gubbySound);
+    void a.play().catch(() => {});
+    setTalking((n) => n + 1);
+  };
+  return (
+    <>
+      <button type="button" aria-label="?" onClick={() => setShown((s) => !s)} className="block h-6 w-6 cursor-default opacity-0" />
+      {shown && (
+        <div className="fixed bottom-5 right-5 z-30 animate-[gubby-pop_.35s_cubic-bezier(.34,1.56,.64,1)]">
+          <button type="button" aria-label="Gubby" onClick={speak} className="block overflow-hidden rounded-2xl shadow-2xl ring-1 ring-[var(--line)] transition hover:scale-105 active:scale-95">
+            <img key={talking} src={gubbyImage} alt="Gubby" className={clsx('h-auto w-40', talking > 0 && 'animate-[gubby-wiggle_.5s_ease-in-out]')} draggable={false} />
+          </button>
+          <button
+            type="button"
+            aria-label="Hide Gubby"
+            onClick={() => setShown(false)}
+            className="absolute -right-2 -top-2 grid h-6 w-6 place-items-center rounded-full bg-[var(--card-2)] text-xs text-slate-300 ring-1 ring-[var(--line)] hover:text-slate-50"
+          >
+            ×
+          </button>
+        </div>
+      )}
+    </>
   );
 }

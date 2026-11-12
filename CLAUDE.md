@@ -235,3 +235,6 @@ Full spec: `docs/SPEC.md`. Work one phase of its "Build order" at a time.
   and cancel. Startup: `exeOf` + main `startupExe` (.lnk via shell.readShortcutLink), `startupIcons`, `startupApp` ->
   `debloater.findByExe` (install folder outranks icon/uninstaller folders; launcher-link uninstallers ignored; ties =
   no match) -> `uninstallApps`. Update ready: main `updateReady` -> App banner "Restart now" (installUpdate).
+- 0.1.10: App `KEEP_ALIVE` pages stay mounted (hidden) once opened, so long jobs keep their state across page switches;
+  `view(id)` renders a page. Never add a page with timers/polling to KEEP_ALIVE (Home/Games/Focus poll). Finder scans are
+  also joinable in main (`findJobs`, `findStatus`). Progress text: fixed-height lines, fixed-width counts, truncated paths.

@@ -101,6 +101,7 @@ const api: OptimizerApi = {
   findDuplicates: call('findDuplicates'),
   findOldFiles: call('findOldFiles'),
   cancelFind: call('cancelFind'),
+  findStatus: call('findStatus'),
   trashFound: call('trashFound'),
   privacyTraces: call('privacyTraces'),
   clearPrivacy: call('clearPrivacy'),

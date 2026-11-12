@@ -1,7 +1,7 @@
 {
   "name": "icycleaner",
   "productName": "IcyTweaker",
-  "version": "0.1.9",
+  "version": "0.1.10",
   "private": true,
   "description": "Windows 10/11 tweaker and cleaner for gamers",
   "main": "dist-electron/main.js",

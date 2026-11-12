@@ -94,7 +94,7 @@ function DriverReinstall({ busy, act, ask, onJob }: { busy: boolean; act: Act; a
       </div>
       {info?.error && <p className="text-amber-300">{info.error}</p>}
       {progress && (
-        <p className="text-sky-300">
+        <p className="truncate tabular-nums text-sky-300" title={progress.current}>
           {progress.current}
           {progress.total > 0 && ` · ${formatBytes(progress.done)} of ${formatBytes(progress.total)}`}
         </p>
@@ -308,7 +308,11 @@ function Runtimes({ busy, act, ask }: { busy: boolean; act: Act; ask: Ask }) {
       }
     >
       <p>Downloads and installs Visual C++, DirectX and the .NET Desktop Runtime from Microsoft. Fixes "missing DLL" errors such as MSVCP140, VCRUNTIME140 and d3dx9_43.</p>
-      {progress && <p className="text-sky-300">{progress.current}</p>}
+      {progress && (
+        <p className="truncate text-sky-300" title={progress.current}>
+          {progress.current}
+        </p>
+      )}
       <div className="grid gap-3 sm:grid-cols-3">
         {groups.map((g) => (
           <fieldset key={g} className="space-y-1">
@@ -453,10 +457,12 @@ function Benchmark({ busy }: { busy: boolean }) {
       subtitle="About 10 seconds. Run it before and after tweaks to compare"
       footer={
         <Button primary disabled={busy || running} onClick={() => void run()}>
-          {running ? `Running: ${step || 'starting'}…` : now ? 'Run again' : 'Run benchmark'}
+          {running ? 'Running…' : now ? 'Run again' : 'Run benchmark'}
         </Button>
       }
     >
+      {/* The current step on its own line, so the button keeps its size. */}
+      {running && <p className="h-5 truncate text-sky-300">Testing: {step || 'starting'}</p>}
       {error && <p className="text-rose-300">{error}</p>}
       {!now ? (
         <p>Measures CPU speed (one core and all cores), memory speed and disk speed, all on this PC. Close games and big downloads first for steady numbers.</p>

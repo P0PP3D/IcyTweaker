@@ -974,6 +974,8 @@ export interface OptimizerApi {
   findDuplicates(root: string): Promise<{ groups: DuplicateGroup[]; error?: string }>;
   findOldFiles(root: string, days: number): Promise<{ files: OldFile[]; error?: string }>;
   cancelFind(): Promise<void>;
+  /** Scans still running, with their latest progress. */
+  findStatus(): Promise<{ duplicates?: { root: string; progress: Progress | null }; oldfiles?: { root: string; days: number; progress: Progress | null } }>;
   /** Moves files from the last duplicate / old-files scan to the Recycle Bin. */
   /** `moved`: the paths that went to the Recycle Bin (the page drops them without a new scan). */
   trashFound(paths: string[]): Promise<ActionReport & { moved?: string[] }>;

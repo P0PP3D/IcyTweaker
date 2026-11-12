@@ -25,6 +25,23 @@ function RootPicker({ value, onChange }: { value: string; onChange: (v: string) 
 
 const name = (p: string) => p.split('\\').pop() ?? p;
 
+/**
+ * Scan progress on its own fixed-height line: the count has a fixed width and the path is cut to fit, so nothing
+ * jumps or wraps as the text changes.
+ */
+function ScanLine({ p }: { p: Progress | null }) {
+  const comparing = p?.current.startsWith('Comparing ');
+  return (
+    <div className="flex h-5 items-center gap-3 overflow-hidden text-xs text-slate-500" aria-live="off">
+      <span className="h-3.5 w-3.5 shrink-0 animate-spin rounded-full border-2 border-sky-500/25 border-t-sky-400" aria-hidden />
+      <span className="w-32 shrink-0 tabular-nums text-slate-400">{p ? `${p.done.toLocaleString()} files found` : 'Starting…'}</span>
+      <span className="min-w-0 flex-1 truncate" title={p?.current}>
+        {p ? (comparing ? p.current : `Looking in ${p.current}`) : ''}
+      </span>
+    </div>
+  );
+}
+
 export function Duplicates({ busy, act, ask }: { busy: boolean; act: Act; ask: Ask }) {
   const [root, setRoot] = useState('');
   const [groups, setGroups] = useState<DuplicateGroup[] | null>(null);
@@ -34,31 +51,37 @@ export function Duplicates({ busy, act, ask }: { busy: boolean; act: Act; ask: A
   /** Files picked for removal. The first copy of each group starts unpicked (kept). */
   const [picked, setPicked] = useState<Set<string>>(new Set());
   const [scanAt, setScanAt] = useState<string | null>(null);
-  useEffect(() => window.api.onProgress((p) => p.task === 'find' && setProgress(p.current ? p : null)), []);
+  useEffect(() => window.api.onProgress((p) => p.task === 'find' && p.label === 'duplicates' && setProgress(p.current ? p : null)), []);
   // Suggest keeping the oldest copy of each set, removing the rest.
   const showGroups = (gs: DuplicateGroup[]) => {
     setGroups(gs);
     setPicked(new Set(gs.flatMap((g) => [...g.files].sort((a, b) => a.modified.localeCompare(b.modified)).slice(1).map((f) => f.path))));
   };
-  useEffect(
-    () =>
-      void window.api.lastScans().then((l) => {
-        if (!l.duplicates) return;
-        setRoot(l.duplicates.root);
-        showGroups(l.duplicates.groups);
-        setScanAt(l.duplicates.at);
-      }),
-    [],
-  );
+  // A scan still running (started before leaving this page) is picked up again; else the last result shows.
+  useEffect(() => {
+    void window.api.findStatus().then(async (s) => {
+      if (s.duplicates) {
+        setRoot(s.duplicates.root);
+        setProgress(s.duplicates.progress);
+        return scan(s.duplicates.root);
+      }
+      const l = await window.api.lastScans();
+      if (!l.duplicates) return;
+      setRoot(l.duplicates.root);
+      showGroups(l.duplicates.groups);
+      setScanAt(l.duplicates.at);
+    });
+  }, []);
 
-  async function scan() {
+  async function scan(r0 = root) {
     setScanning(true);
     setGroups(null);
-    const r = await window.api.findDuplicates(root);
+    const r = await window.api.findDuplicates(r0); // joins the running scan of the same folder
     showGroups(r.groups);
     setError(r.error);
     if (!r.error) setScanAt(new Date().toISOString());
     setScanning(false);
+    setProgress(null);
   }
 
   const toggle = (p: string, on: boolean) => setPicked((s) => (on ? new Set(s).add(p) : new Set([...s].filter((x) => x !== p))));
@@ -88,13 +111,13 @@ export function Duplicates({ busy, act, ask }: { busy: boolean; act: Act; ask: A
       </div>
       <div className="flex flex-wrap items-center gap-2">
         <RootPicker value={root} onChange={setRoot} />
-        <Button primary disabled={busy || scanning || !root} onClick={scan}>
+        <Button primary disabled={busy || scanning || !root} onClick={() => void scan()}>
           {scanning ? 'Scanning…' : 'Scan'}
         </Button>
         {scanning && <Button onClick={() => window.api.cancelFind()}>Cancel</Button>}
-        {progress && <span className="truncate text-xs text-slate-500">{progress.done} files · {progress.current}</span>}
         {!scanning && <ScanAge at={scanAt} />}
       </div>
+      {scanning && <ScanLine p={progress} />}
       {error && <p className="text-sm text-rose-300">{error}</p>}
       {groups && (
         <>
@@ -160,22 +183,31 @@ export function OldFiles({ busy, act, ask }: { busy: boolean; act: Act; ask: Ask
   const [scanning, setScanning] = useState(false);
   const [picked, setPicked] = useState<Set<string>>(new Set());
   const [scanAt, setScanAt] = useState<string | null>(null);
-  useEffect(
-    () =>
-      void window.api.lastScans().then((l) => {
-        if (!l.oldfiles) return;
-        setRoot(l.oldfiles.root);
-        setDays(l.oldfiles.days);
-        setFiles(l.oldfiles.files);
-        setScanAt(l.oldfiles.at);
-      }),
-    [],
-  );
+  const [progress, setProgress] = useState<Progress | null>(null);
+  useEffect(() => window.api.onProgress((p) => p.task === 'find' && p.label === 'oldfiles' && setProgress(p.current ? p : null)), []);
+  // A scan still running (started before leaving this page) is picked up again; else the last result shows.
+  useEffect(() => {
+    void window.api.findStatus().then(async (s) => {
+      if (s.oldfiles) {
+        setRoot(s.oldfiles.root);
+        setDays(s.oldfiles.days);
+        setProgress(s.oldfiles.progress);
+        return scan(s.oldfiles.root, s.oldfiles.days);
+      }
+      const l = await window.api.lastScans();
+      if (!l.oldfiles) return;
+      setRoot(l.oldfiles.root);
+      setDays(l.oldfiles.days);
+      setFiles(l.oldfiles.files);
+      setScanAt(l.oldfiles.at);
+    });
+  }, []);
 
-  async function scan() {
+  async function scan(r0 = root, d0 = days) {
     setScanning(true);
     setFiles(null);
-    const r = await window.api.findOldFiles(root, days);
+    const r = await window.api.findOldFiles(r0, d0); // joins the running scan with the same settings
+    setProgress(null);
     setFiles(r.files);
     setError(r.error);
     if (!r.error) setScanAt(new Date().toISOString());
@@ -199,12 +231,13 @@ export function OldFiles({ busy, act, ask }: { busy: boolean; act: Act; ask: Ask
             </option>
           ))}
         </select>
-        <Button primary disabled={busy || scanning || !root} onClick={scan}>
+        <Button primary disabled={busy || scanning || !root} onClick={() => void scan()}>
           {scanning ? 'Scanning…' : 'Scan'}
         </Button>
         {scanning && <Button onClick={() => window.api.cancelFind()}>Cancel</Button>}
         {!scanning && <ScanAge at={scanAt} />}
       </div>
+      {scanning && <ScanLine p={progress} />}
       {error && <p className="text-sm text-rose-300">{error}</p>}
       {files && (
         <FeatureCard

@@ -5,7 +5,7 @@ import { createCleaner, driveHealth, type Env } from './cleaner/cleaner';
 import os from 'node:os';
 import path from 'node:path';
 import { spawn } from 'node:child_process';
-import type { Accent, LastScans, ProcessView, RecycleItem, AppSettings, CleanResult, DriverJobView, FrametimeResult, GameValues, InvokeApi, NetAdapterView, Progress, ServiceInfo, ServiceLevel, ServiceStartType, StartupItemView } from '../shared/types';
+import type { Accent, LastScans, ProcessView, RecycleItem, AppSettings, CleanResult, DriverJobView, FrametimeResult, GameValues, InvokeApi, NetAdapterView, Progress, ServiceInfo, ServiceLevel, ServiceStartType, StartupItemView, DuplicateGroup, OldFile } from '../shared/types';
 import { POWERSHELL_EXE, SHUTDOWN_EXE, createSystemAdapter, isLiveEnv, liveAdapter, REG_EXE, runningProcesses, sz, type SettingRef } from './system/adapter';
 import { createProcessSampler, queryProcesses } from './system/processes';
 import { WPT_INSTALL_ARGS, XPERF, latencyCheck, traceDrivers } from './system/latency';
@@ -257,6 +257,8 @@ app.whenReady().then(async () => {
       void writeFile(lastScansFile, JSON.stringify(lastScans)).catch(() => {});
     };
     let findCancelled = false;
+    /** Running Duplicate Finder / Old Files scans, so a page opened again joins them. */
+    const findJobs: { duplicates?: { root: string; days?: number; promise: Promise<unknown>; last: Progress | null }; oldfiles?: { root: string; days?: number; promise: Promise<unknown>; last: Progress | null } } = {};
     const privacy = createPrivacy(safety, { appData: env.APPDATA!, snapshotDir: path.join(safety.dataDir, 'privacy-backups') });
     const captureHistory = path.join(app.getPath('userData'), 'captures', 'history.json');
     // Driver job: resumes after the restart via RunOnce (`--resume-driver-job` just opens the app on Resources).
@@ -1603,37 +1605,71 @@ app.whenReady().then(async () => {
         }
       },
 
-      async findDuplicates(root: unknown) {
-        if (typeof root !== 'string' || !analyzeRoots.includes(root)) return { groups: [], error: 'Invalid request.' };
+      // Scans keep running when the page is left; coming back (or asking again for the same scan) joins the running one.
+      findDuplicates(root: unknown) {
+        if (typeof root !== 'string' || !analyzeRoots.includes(root)) return Promise.resolve({ groups: [], error: 'Invalid request.' });
+        const job = findJobs.duplicates;
+        if (job && job.root === root) return job.promise as Promise<{ groups: DuplicateGroup[]; error?: string }>;
         findCancelled = false;
-        try {
-          const groups = await findDuplicates(root, {
-            skip: (p) => isProtected(p) || keptOut(p) || !!adapter.isRemoved?.(p),
-            cancelled: () => findCancelled,
-            onProgress: (done, current) => progress({ task: 'find', done, total: 0, current }),
-          });
-          saveLast({ duplicates: { at: new Date().toISOString(), root, groups } });
-          refreshFound();
-          return { groups };
-        } catch (err) {
-          return { groups: [], error: (err as Error).message };
-        } finally {
-          progress({ task: 'find', done: 0, total: 0, current: '' });
-        }
+        const report = (done: number, current: string) => {
+          const p: Progress = { task: 'find', label: 'duplicates', done, total: 0, current };
+          if (findJobs.duplicates) findJobs.duplicates.last = p;
+          progress(p);
+        };
+        const promise = (async () => {
+          try {
+            const groups = await findDuplicates(root, { skip: (p) => isProtected(p) || keptOut(p) || !!adapter.isRemoved?.(p), cancelled: () => findCancelled, onProgress: report });
+            saveLast({ duplicates: { at: new Date().toISOString(), root, groups } });
+            refreshFound();
+            return { groups };
+          } catch (err) {
+            return { groups: [], error: (err as Error).message };
+          } finally {
+            delete findJobs.duplicates;
+            progress({ task: 'find', label: 'duplicates', done: 0, total: 0, current: '' });
+          }
+        })();
+        findJobs.duplicates = { root, promise, last: null };
+        return promise;
       },
 
-      async findOldFiles(root: unknown, days: unknown) {
-        if (typeof root !== 'string' || !analyzeRoots.includes(root) || !Number.isInteger(days) || (days as number) < 30) return { files: [], error: 'Invalid request.' };
+      findOldFiles(root: unknown, days: unknown) {
+        if (typeof root !== 'string' || !analyzeRoots.includes(root) || !Number.isInteger(days) || (days as number) < 30) return Promise.resolve({ files: [], error: 'Invalid request.' });
+        const job = findJobs.oldfiles;
+        if (job && job.root === root && job.days === days) return job.promise as Promise<{ files: OldFile[]; error?: string }>;
         findCancelled = false;
-        try {
-          const files = await findOldFiles(root, { days: days as number, skip: (p) => isProtected(p) || keptOut(p) || !!adapter.isRemoved?.(p), cancelled: () => findCancelled });
-          saveLast({ oldfiles: { at: new Date().toISOString(), root, days: days as number, files } });
-          refreshFound();
-          return { files };
-        } catch (err) {
-          return { files: [], error: (err as Error).message };
-        }
+        let n = 0;
+        let last = 0;
+        const onFile = (f: { path: string }) => {
+          n++;
+          if (Date.now() - last < 250) return;
+          last = Date.now();
+          const p: Progress = { task: 'find', label: 'oldfiles', done: n, total: 0, current: f.path };
+          if (findJobs.oldfiles) findJobs.oldfiles.last = p;
+          progress(p);
+        };
+        const promise = (async () => {
+          try {
+            const files = await findOldFiles(root, { days: days as number, skip: (p) => isProtected(p) || keptOut(p) || !!adapter.isRemoved?.(p), cancelled: () => findCancelled, onFile });
+            saveLast({ oldfiles: { at: new Date().toISOString(), root, days: days as number, files } });
+            refreshFound();
+            return { files };
+          } catch (err) {
+            return { files: [], error: (err as Error).message };
+          } finally {
+            delete findJobs.oldfiles;
+            progress({ task: 'find', label: 'oldfiles', done: 0, total: 0, current: '' });
+          }
+        })();
+        findJobs.oldfiles = { root, days: days as number, promise, last: null };
+        return promise;
       },
+
+      /** Scans still running (a page opened mid-scan shows it and waits for the result). */
+      findStatus: async () => ({
+        duplicates: findJobs.duplicates && { root: findJobs.duplicates.root, progress: findJobs.duplicates.last },
+        oldfiles: findJobs.oldfiles && { root: findJobs.oldfiles.root, days: findJobs.oldfiles.days!, progress: findJobs.oldfiles.last },
+      }),
 
       cancelFind: async () => void (findCancelled = true),
 

@@ -142,9 +142,16 @@ export function Analyzer({ busy, act, ask }: { busy: boolean; act: Act; ask: Ask
       </div>
 
       {scanning && progress && (
-        <p className="truncate text-sm text-slate-400" role="status">
-          {progress.done.toLocaleString()} files, {formatBytes(progress.bytes ?? 0)} so far… {progress.current}
-        </p>
+        // One steady line: fixed-width numbers, the folder cut to fit (nothing jumps as the text changes).
+        <div className="flex h-5 items-center gap-3 overflow-hidden text-sm text-slate-400" role="status">
+          <span className="h-3.5 w-3.5 shrink-0 animate-spin rounded-full border-2 border-sky-500/25 border-t-sky-400" aria-hidden />
+          <span className="w-56 shrink-0 tabular-nums text-slate-300">
+            {progress.done.toLocaleString()} files · {formatBytes(progress.bytes ?? 0)}
+          </span>
+          <span className="min-w-0 flex-1 truncate text-xs text-slate-500" title={progress.current}>
+            {progress.current}
+          </span>
+        </div>
       )}
       {error && <p className="text-sm text-rose-300">{error}</p>}
 

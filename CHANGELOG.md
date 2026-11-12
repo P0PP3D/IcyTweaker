@@ -2,6 +2,15 @@
 
 Each section becomes the description of its GitHub release (see .github/workflows/release-notes.yml).
 
+## v0.1.10
+
+**Improved**
+- **Duplicate Finder and Old Files keep scanning when you switch pages:** come back and the page picks the running scan up again, with its progress.
+- **Steady scan progress:** a single line under the Scan button that no longer jumps around while it updates. Old Files now shows its progress too.
+- **The same for every long job:** Disk Analyzer, the System Corruption Check, Quick benchmark, runtime installs, driver downloads, Debloating uninstalls, network tests and the cleaners keep going, with their progress and results, when you switch pages.
+- **Fixed:** startup tasks you turned off (such as AMD's StartAUEP) showed as on again while their program was running. They were off; the list now shows it.
+- **Progress text stays put everywhere:** Disk Analyzer's progress line, the benchmark button (its current step now shows underneath), driver download and runtime install lines, and percentages on buttons.
+
 ## v0.1.9
 
 **New**

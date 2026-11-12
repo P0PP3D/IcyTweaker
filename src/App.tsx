@@ -30,6 +30,8 @@ import { applyTheme } from './theme';
 
 const PAGES = ['home', 'general', 'debloater', 'fixes', 'presets', 'restore', 'services', 'network', 'resources', 'games', 'appopt', 'advanced', 'bios', 'health', 'smart', 'browsers', 'apps', 'analyzer', 'drives', 'duplicates', 'oldfiles', 'privacy', 'recycle', 'settings', 'devices', 'startup', 'focus', 'olddrivers', 'features'] as const;
 type Page = (typeof PAGES)[number];
+/** Pages that stay mounted (hidden) after you leave them: their long jobs keep their progress and results. None polls on a timer. */
+const KEEP_ALIVE = new Set<Page>(['analyzer', 'duplicates', 'oldfiles', 'resources', 'debloater', 'network', 'smart', 'browsers', 'apps', 'health', 'olddrivers', 'drives']);
 type Confirm = { title: string; body: string; confirmLabel: string; typeToConfirm?: string; resolve: (ok: boolean) => void };
 /** Tweaks the Re-Enable Defender fix reverses. */
 const DEFENDER_TWEAKS = ['disable-defender', 'rt-scan-trim', 'security-quiet'];
@@ -167,6 +169,11 @@ export function App() {
       }
       return next;
     });
+  // Pages with long jobs (scans, checks, benchmark, uninstalls) stay mounted once opened: see the page list below.
+  const [kept, setKept] = useState<Page[]>([]);
+  useEffect(() => {
+    if (KEEP_ALIVE.has(page)) setKept((k) => (k.includes(page) ? k : [...k, page]));
+  }, [page]);
   // The beginner guide, reopened from Home or Settings (openGuide in Onboarding.tsx).
   const [guide, setGuide] = useState(false);
   useEffect(() => {
@@ -306,6 +313,68 @@ export function App() {
     setPage(id);
     setQuery('');
   };
+
+  /** One page by id (the switch used to be inline; kept pages render it once each). */
+  const view = (id: Page) =>
+    id === 'home' ? (
+      <Home state={state} go={go} />
+    ) : id === 'general' ? (
+              <General {...pageProps} />
+            ) : id === 'debloater' ? (
+              <Debloater {...pageProps} />
+            ) : id === 'fixes' ? (
+              <Fixes {...pageProps} />
+            ) : id === 'services' ? (
+              <Services {...pageProps} />
+            ) : id === 'network' ? (
+              <Network {...pageProps} />
+            ) : id === 'resources' ? (
+              <Resources {...pageProps} onDriverJob={setDriverJob} />
+            ) : id === 'advanced' ? (
+              <Advanced {...pageProps} />
+            ) : id === 'bios' ? (
+              <Bios busy={busy} act={act} />
+            ) : id === 'games' ? (
+              <Games busy={busy} act={act} ask={ask} />
+            ) : id === 'appopt' ? (
+              <AppOptimizer {...pageProps} />
+            ) : id === 'health' ? (
+              <HealthCheck {...pageProps} />
+            ) : id === 'smart' ? (
+              <CleanerPage key="system" group="system" {...pageProps} />
+            ) : id === 'browsers' ? (
+              <CleanerPage key="browser" group="browser" {...pageProps} />
+            ) : id === 'apps' ? (
+              <CleanerPage key="app" group="app" {...pageProps} />
+            ) : id === 'analyzer' ? (
+              <Analyzer {...pageProps} />
+            ) : id === 'drives' ? (
+              <DriveHealth {...pageProps} />
+            ) : id === 'devices' ? (
+              <Devices {...pageProps} />
+            ) : id === 'features' ? (
+              <WinFeatures {...pageProps} />
+            ) : id === 'olddrivers' ? (
+              <OldDrivers busy={busy} act={act} ask={ask} />
+            ) : id === 'focus' ? (
+              <Focus busy={busy} act={act} />
+            ) : id === 'startup' ? (
+              <Startup busy={busy} act={act} ask={ask} />
+            ) : id === 'settings' ? (
+              <Settings state={state} busy={busy} act={act} ask={ask} />
+            ) : id === 'duplicates' ? (
+              <Duplicates busy={busy} act={act} ask={ask} />
+            ) : id === 'oldfiles' ? (
+              <OldFiles busy={busy} act={act} ask={ask} />
+            ) : id === 'privacy' ? (
+              <Privacy busy={busy} act={act} ask={ask} />
+            ) : id === 'recycle' ? (
+              <RecycleBin busy={busy} act={act} ask={ask} />
+            ) : id === 'presets' ? (
+              <Presets {...pageProps} />
+            ) : (
+              <SystemRestore {...pageProps} />
+    );
 
   return (
     <div className="flex h-screen text-slate-200">
@@ -497,10 +566,13 @@ export function App() {
               </Banner>
             )}
 
-            {/* Keyed by page: each page fades in as you switch to it. */}
-            <div key={q ? 'search' : page} className="page-in">
-            {q ? (
-              <section className="space-y-3">
+            {/*
+              Pages that run long jobs stay mounted (hidden) once opened, so a scan, check or benchmark keeps going and
+              keeps its progress and results when you switch pages. The others unmount as before (Home, Games and Focus
+              poll on timers that must stop when you leave). Each page fades in as it is shown.
+            */}
+            {q && (
+              <section className="page-in space-y-3">
                 <h2 className="text-xl font-semibold text-slate-100">
                   Search: “{query.trim()}” <span className="text-sm font-normal text-slate-500">{results.length} result(s)</span>
                 </h2>
@@ -510,67 +582,12 @@ export function App() {
                   ))}
                 </ul>
               </section>
-            ) : page === 'home' ? (
-              <Home state={state} go={go} />
-            ) : page === 'general' ? (
-              <General {...pageProps} />
-            ) : page === 'debloater' ? (
-              <Debloater {...pageProps} />
-            ) : page === 'fixes' ? (
-              <Fixes {...pageProps} />
-            ) : page === 'services' ? (
-              <Services {...pageProps} />
-            ) : page === 'network' ? (
-              <Network {...pageProps} />
-            ) : page === 'resources' ? (
-              <Resources {...pageProps} onDriverJob={setDriverJob} />
-            ) : page === 'advanced' ? (
-              <Advanced {...pageProps} />
-            ) : page === 'bios' ? (
-              <Bios busy={busy} act={act} />
-            ) : page === 'games' ? (
-              <Games busy={busy} act={act} ask={ask} />
-            ) : page === 'appopt' ? (
-              <AppOptimizer {...pageProps} />
-            ) : page === 'health' ? (
-              <HealthCheck {...pageProps} />
-            ) : page === 'smart' ? (
-              <CleanerPage key="system" group="system" {...pageProps} />
-            ) : page === 'browsers' ? (
-              <CleanerPage key="browser" group="browser" {...pageProps} />
-            ) : page === 'apps' ? (
-              <CleanerPage key="app" group="app" {...pageProps} />
-            ) : page === 'analyzer' ? (
-              <Analyzer {...pageProps} />
-            ) : page === 'drives' ? (
-              <DriveHealth {...pageProps} />
-            ) : page === 'devices' ? (
-              <Devices {...pageProps} />
-            ) : page === 'features' ? (
-              <WinFeatures {...pageProps} />
-            ) : page === 'olddrivers' ? (
-              <OldDrivers busy={busy} act={act} ask={ask} />
-            ) : page === 'focus' ? (
-              <Focus busy={busy} act={act} />
-            ) : page === 'startup' ? (
-              <Startup busy={busy} act={act} ask={ask} />
-            ) : page === 'settings' ? (
-              <Settings state={state} busy={busy} act={act} ask={ask} />
-            ) : page === 'duplicates' ? (
-              <Duplicates busy={busy} act={act} ask={ask} />
-            ) : page === 'oldfiles' ? (
-              <OldFiles busy={busy} act={act} ask={ask} />
-            ) : page === 'privacy' ? (
-              <Privacy busy={busy} act={act} ask={ask} />
-            ) : page === 'recycle' ? (
-              <RecycleBin busy={busy} act={act} ask={ask} />
-            ) : page === 'presets' ? (
-              <Presets {...pageProps} />
-            ) : (
-              <SystemRestore {...pageProps} />
             )}
-            </div>
-
+            {[...new Set([...kept, page])].map((id) => (
+              <div key={id} hidden={!!q || id !== page} className={!q && id === page ? 'page-in' : undefined}>
+                {view(id)}
+              </div>
+            ))}
           </div>
         </main>
       </div>

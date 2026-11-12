@@ -201,6 +201,30 @@ input[type='checkbox']:disabled {
   }
 }
 
+/* Gubby (Settings easter egg): pops up from the corner, wiggles when he speaks. */
+@keyframes gubby-pop {
+  from {
+    opacity: 0;
+    transform: translateY(40px) scale(0.6);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+@keyframes gubby-wiggle {
+  0%,
+  100% {
+    transform: rotate(0);
+  }
+  25% {
+    transform: rotate(-4deg) scale(1.03);
+  }
+  75% {
+    transform: rotate(4deg) scale(1.03);
+  }
+}
+
 @keyframes launch-pop {
   from {
     opacity: 0;

@@ -51,7 +51,7 @@ const enabledFlag = (v: unknown) => {
 /** Third-party scheduled tasks with a sign-in trigger. Read-only (PowerShell, output as base64 JSON). */
 export const LOGON_TASKS_SCRIPT =
   "$t = @(Get-ScheduledTask | Where-Object { $_.TaskPath -notlike '\\Microsoft\\*' -and $_.TaskPath -notlike '\\IcyCleaner\\*' -and @($_.Triggers | Where-Object { $_.CimClass.CimClassName -eq 'MSFT_TaskLogonTrigger' }).Count } | " +
-  "ForEach-Object { $a = @($_.Actions)[0]; [pscustomobject]@{ path = $_.TaskPath + $_.TaskName; enabled = ($_.State -ne 'Disabled'); command = (\"$($a.Execute) $($a.Arguments)\").Trim() } }); " +
+  "ForEach-Object { $a = @($_.Actions)[0]; [pscustomobject]@{ path = $_.TaskPath + $_.TaskName; enabled = [bool]$_.Settings.Enabled; command = (\"$($a.Execute) $($a.Arguments)\").Trim() } }); " +
   '[Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes((ConvertTo-Json -InputObject $t -Compress)))';
 
 export function parseLogonTasks(base64: string): Array<{ path: string; enabled: boolean; command: string }> {
