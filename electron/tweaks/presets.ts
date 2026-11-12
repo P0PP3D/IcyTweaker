@@ -2,8 +2,10 @@
 // (every tweak on every page), so new tweaks join them automatically.
 import type { PresetMeta } from '../../shared/types';
 import { generalTweaks } from './general';
+import { hasTag } from './tags';
 
-const safe = generalTweaks.filter((t) => t.risk === 'safe').map((t) => t.id);
+// Preferences (dark mode, Explorer switches) are taste, not performance: never in a preset.
+const safe = generalTweaks.filter((t) => t.risk === 'safe' && !hasTag(t.id, 'preference')).map((t) => t.id);
 
 const lowLatency = ['core-power-plan', 'win32-priority', 'raw-aim-curve', 'usb-power-guard', 'stickykeys-guard', 'do-solo-mode', 'windowed-game-optimizations'];
 const debloat = [

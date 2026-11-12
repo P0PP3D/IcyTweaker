@@ -791,6 +791,38 @@ export const generalTweaks: Tweak[] = [
     }),
     { hive: 'HKLM', key: 'SOFTWARE\\Microsoft\\FTH', name: 'Enabled', enabled: 0, defaultValue: 1 },
   ),
+  // ---- Explorer and quality-of-life (values read on the dev PC, build 26200, 2026-11-12)
+  regDwordTweak(
+    meta({ id: 'show-file-extensions', name: 'Show File Extensions', category: 'system', description: 'File Explorer shows ".exe", ".zip" and so on, so a "photo.jpg.exe" can\'t pass as a picture.', requiresAdmin: false }),
+    { hive: 'HKCU', key: 'Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\Advanced', name: 'HideFileExt', enabled: 0, defaultValue: 1 },
+  ),
+  regDwordTweak(
+    meta({ id: 'show-hidden-files', name: 'Show Hidden Files', category: 'system', description: 'File Explorer shows hidden files and folders (like AppData). Windows system files stay hidden.', requiresAdmin: false }),
+    { hive: 'HKCU', key: 'Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\Advanced', name: 'Hidden', enabled: 1, defaultValue: 2 },
+  ),
+  regDwordTweak(
+    meta({
+      id: 'taskbar-end-task',
+      name: 'End Task on the Taskbar',
+      category: 'system',
+      description: 'Right-click a taskbar app to force-close it, without opening Task Manager (Windows 11 23H2 and later).',
+      requiresAdmin: false,
+      builds: { min: 22631 },
+    }),
+    { hive: 'HKCU', key: 'Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\Advanced\\TaskbarDeveloperSettings', name: 'TaskbarEndTask', enabled: 1, defaultValue: null },
+  ),
+  regDwordTweak(
+    meta({ id: 'classic-alt-tab', name: 'Classic Alt+Tab', category: 'system', description: 'The old, instant Alt+Tab grid of icons instead of large window previews. Takes effect after signing out.', requiresAdmin: false, requiresReboot: true }),
+    // Absent on the dev PC (Windows default: previews).
+    { hive: 'HKCU', key: 'Software\\Microsoft\\Windows\\CurrentVersion\\Explorer', name: 'AltTabSettings', enabled: 1, defaultValue: null },
+  ),
+  regTweak(
+    meta({ id: 'dark-mode', name: 'Dark Mode', category: 'system', description: 'Dark Windows and apps (Settings > Personalization > Colors).', requiresAdmin: false }),
+    [
+      { hive: 'HKCU', key: 'Software\\Microsoft\\Windows\\CurrentVersion\\Themes\\Personalize', name: 'AppsUseLightTheme', on: dword(0), off: dword(1) },
+      { hive: 'HKCU', key: 'Software\\Microsoft\\Windows\\CurrentVersion\\Themes\\Personalize', name: 'SystemUsesLightTheme', on: dword(0), off: dword(1) },
+    ],
+  ),
   regDwordTweak(
     meta({ id: 'error-reporting-off', name: 'Windows Error Reporting Off', category: 'security', description: 'No crash reports collected or sent to Microsoft in the background.' }),
     // Policy value; absent on the dev PC.

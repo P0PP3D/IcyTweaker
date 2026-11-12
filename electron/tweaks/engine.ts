@@ -2,6 +2,7 @@
 import type { ActionReport, AppState, FixMeta, PresetMeta, TweakMeta, TweakStatus } from '../../shared/types';
 import { POWERSHELL_EXE, creatable, runningProcesses, dword, sameValue, type Hive, type RegValue, type SettingRef, type Value } from '../system/adapter';
 import type { Safety, TweakContext } from '../system/safety';
+import { TWEAK_TAGS } from './tags';
 
 export interface TweakDefinition extends TweakMeta {
   readState(ctx: TweakContext): Promise<TweakStatus>;
@@ -278,6 +279,7 @@ export function createEngine(o: {
           unfit: unfit(t),
           anticheatWarning: anticheatWarning(t),
           changedAt: changedAt(t),
+          tags: TWEAK_TAGS[t.id],
           status: st[i],
           supported: supported(t),
         })),

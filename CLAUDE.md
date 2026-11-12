@@ -205,5 +205,11 @@ Full spec: `docs/SPEC.md`. Work one phase of its "Build order" at a time.
   crash; quitting turns it off. Settings `settings.focus`. Presets carry `estimate`/`estimateNote`: conservative ranges,
   labelled as estimates (not measured). `TweakMeta.deniedHint` replaces Access-is-denied for Windows-protected settings
   (Widgets: UCPD; don't work around it). Debloater .ico icons load with nativeImage (getFileIcon gives a blank).
+- Tweak labels (`tweaks/tags.ts` TWEAK_TAGS): power / beta (its value is marked verify) / preference (presets skip it).
+  Explorer switches (file extensions, hidden files, End task, classic Alt+Tab, dark mode) are preferences. Library
+  stores: Riot (Metadata product_settings.yaml, launched via Riot Client), Ubisoft / GOG / Xbox (`STORES_SCRIPT`, one
+  PowerShell query; GOG unverified); EA and Battle.net not supported (no documented install record). Library and profile
+  launches go through main `startUnelevated` (.lnk + explorer). Launcher-junk cleaner targets (steam logs/depotcache, epic,
+  riot, ubisoft, game logs). Home checkups: chipset driver date (Win32_PnPSignedDriver) + `openVendorPage` (AMD/Intel pages).
 - Hardware detection (~9 s) is cached in `hardware.json` (userData) and refreshed in the background. Start-up reads
   must run in parallel (sequential awaits defeat the batched reads).

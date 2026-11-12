@@ -89,6 +89,8 @@ function Action({ icon, title, text, onClick }: { icon: IconName; title: string;
 type Tone = 'good' | 'warn' | 'info';
 const DOT: Record<Tone, string> = { good: 'bg-emerald-400', warn: 'bg-amber-400', info: 'bg-slate-500' };
 const DRIVER_OLD_DAYS = 90;
+/** Chipset drivers change less often than graphics drivers. */
+const CHIPSET_OLD_DAYS = 365;
 const SHADER_BIG_GB = 10;
 
 /** Checkups: display refresh rate, GPU driver age, shader cache size. Read-only. */
@@ -116,7 +118,25 @@ function Checkups({ go }: { go: Go }) {
       tone: days === null ? 'info' : old ? 'warn' : 'good',
       title: `${g.name} driver`,
       text: days === null ? 'Driver date unknown.' : `${date!.toLocaleDateString()} (${days} days old)${old ? '. Newer drivers often fix game performance.' : '.'}`,
-      action: old && g.vendor === 'NVIDIA' ? { label: 'Driver tools', run: () => go('resources') } : undefined,
+      action: !old
+        ? undefined
+        : g.vendor === 'NVIDIA'
+          ? { label: 'Driver tools', run: () => go('resources') }
+          : g.vendor === 'AMD' || g.vendor === 'Intel'
+            ? { label: 'Get latest driver', run: () => void window.api.openVendorPage(g.vendor === 'AMD' ? 'amd' : 'intel') }
+            : undefined,
+    });
+  }
+  if (c?.chipset) {
+    const ch = c.chipset;
+    const date = new Date(`${ch.driverDate}T00:00`);
+    const days = Math.floor((Date.now() - date.getTime()) / 86_400_000);
+    const old = days > CHIPSET_OLD_DAYS;
+    rows.push({
+      tone: old ? 'warn' : 'good',
+      title: `${ch.vendor} chipset drivers`,
+      text: `${date.toLocaleDateString()} (${days} days old)${old ? '. Newer chipset drivers can fix USB, power and stutter problems.' : '.'}`,
+      action: old ? { label: 'Get latest driver', run: () => void window.api.openVendorPage(ch.vendor === 'AMD' ? 'amd' : 'intel') } : undefined,
     });
   }
   if (c) {

@@ -46,8 +46,94 @@ export async function mainExe(dir: string): Promise<string | null> {
   return largest(found.filter((f) => /-shipping\.exe$/i.test(f.file))) ?? largest(found.filter((f) => f.depth === 0)) ?? largest(found);
 }
 
-export async function scanLibrary(env: GameEnv): Promise<LibraryEntry[]> {
+/** Riot product ids -> names (folder names under ProgramData\Riot Games\Metadata). */
+const RIOT_NAMES: Record<string, string> = {
+  valorant: 'VALORANT',
+  league_of_legends: 'League of Legends',
+  bacon: 'Legends of Runeterra',
+  lion: '2XKO',
+};
+
+/**
+ * Riot games: each Metadata\<product>.<patchline> folder has a product_settings.yaml with product_install_full_path
+ * (read on the dev PC, 2026-11). Only live patchlines whose folder exists. Launched through Riot Client like its own
+ * Start menu shortcuts. teamfighttactics shares League's client, so it's not listed separately.
+ */
+async function riotGames(env: GameEnv): Promise<LibraryEntry[]> {
+  const root = path.join(env.programData, 'Riot Games');
+  const rc = await readFile(path.join(root, 'RiotClientInstalls.json'), 'utf8').then((t) => (JSON.parse(t) as { rc_default?: string }).rc_default, () => undefined);
+  if (!rc) return [];
   const out: LibraryEntry[] = [];
+  for (const dir of await readdir(path.join(root, 'Metadata')).catch(() => [] as string[])) {
+    const m = /^([a-z0-9_]+)\.live$/.exec(dir);
+    if (!m || m[1] === 'teamfighttactics') continue;
+    const yaml = await readFile(path.join(root, 'Metadata', dir, `${dir}.product_settings.yaml`), 'utf8').catch(() => '');
+    const install = /product_install_full_path:\s*"([^"]+)"/.exec(yaml)?.[1];
+    if (!install || !(await stat(install).catch(() => null))) continue;
+    const exe = await mainExe(path.normalize(install));
+    if (!exe) continue;
+    const name = RIOT_NAMES[m[1]] ?? m[1].replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
+    out.push({ id: `riot-${dir}`, name, source: 'riot', exe, launch: { exe: path.normalize(rc), args: [`--launch-product=${m[1]}`, '--launch-patchline=live'] } });
+  }
+  return out;
+}
+
+/**
+ * Registry- and manifest-based stores, read in one PowerShell query (base64 JSON):
+ *   Ubisoft Connect: HKLM\...\Ubisoft\Launcher\Installs\<id> InstallDir (key read on the dev PC).
+ *   GOG: HKLM\...\GOG.com\Games\<id> gameName / exe / path. verify: no GOG game on the dev PC.
+ *   Xbox app / Game Pass: <drive>:\XboxGames\<game>\Content\MicrosoftGame.config (Identity Name, Executable) and the
+ *   package family name from Get-AppxPackage (folders read on the dev PC).
+ */
+export const STORES_SCRIPT =
+  "$o = @{ ubisoft = @(); gog = @(); xbox = @() }; " +
+  "$o.ubisoft = @(Get-ChildItem 'HKLM:\\SOFTWARE\\WOW6432Node\\Ubisoft\\Launcher\\Installs' -ErrorAction SilentlyContinue | ForEach-Object { [pscustomobject]@{ id = $_.PSChildName; dir = [string](Get-ItemProperty $_.PSPath).InstallDir } }); " +
+  "$o.gog = @(Get-ChildItem 'HKLM:\\SOFTWARE\\WOW6432Node\\GOG.com\\Games' -ErrorAction SilentlyContinue | ForEach-Object { $g = Get-ItemProperty $_.PSPath; [pscustomobject]@{ id = $_.PSChildName; name = [string]$g.gameName; exe = [string]$g.exe } }); " +
+  "$o.xbox = @(Get-PSDrive -PSProvider FileSystem | ForEach-Object { Get-ChildItem (Join-Path $_.Root 'XboxGames') -Directory -ErrorAction SilentlyContinue } | ForEach-Object { $cfg = Join-Path $_.FullName 'Content\\MicrosoftGame.config'; if (Test-Path $cfg) { " +
+  "[xml]$x = Get-Content $cfg -Raw; $g = $x.Game; $e = @($g.ExecutableList.Executable)[0]; $p = Get-AppxPackage -Name $g.Identity.Name -ErrorAction SilentlyContinue | Select-Object -First 1; " +
+  "[pscustomobject]@{ dir = $_.FullName; name = [string]$g.ShellVisuals.DefaultDisplayName; folder = $_.Name; exe = [string]$e.Name; appId = [string]$e.Id; pfn = [string]$p.PackageFamilyName } } }); " +
+  '[Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes((ConvertTo-Json -InputObject $o -Compress -Depth 4)))';
+
+type StoresRaw = {
+  ubisoft?: Array<{ id?: string; dir?: string }>;
+  gog?: Array<{ id?: string; name?: string; exe?: string }>;
+  xbox?: Array<{ dir?: string; name?: string; folder?: string; exe?: string; appId?: string; pfn?: string }>;
+};
+
+/** Ubisoft, GOG and Xbox entries from STORES_SCRIPT's output. Only games whose files exist. */
+export async function parseStores(base64: string, systemRoot = 'C:\\Windows'): Promise<LibraryEntry[]> {
+  const json = Buffer.from(base64.trim(), 'base64').toString('utf8').replace(/[\u0000-\u001f]/g, ' ').trim();
+  if (!json) return [];
+  const raw = JSON.parse(json) as StoresRaw;
+  const arr = <T>(v: T[] | T | undefined): T[] => (v === undefined || v === null ? [] : Array.isArray(v) ? v : [v]);
+  const out: LibraryEntry[] = [];
+  for (const u of arr(raw.ubisoft)) {
+    if (!u.id || !/^\d+$/.test(u.id) || !u.dir || !(await stat(u.dir).catch(() => null))) continue;
+    const exe = await mainExe(path.normalize(u.dir));
+    if (exe) out.push({ id: `ubisoft-${u.id}`, name: path.basename(path.normalize(u.dir)), source: 'ubisoft', exe, launch: { url: `uplay://launch/${u.id}/0` } });
+  }
+  for (const g of arr(raw.gog)) {
+    if (!g.id || !/^\d+$/.test(g.id) || !g.name || !g.exe || !(await stat(g.exe).catch(() => null))) continue;
+    out.push({ id: `gog-${g.id}`, name: g.name, source: 'gog', exe: g.exe, launch: { exe: g.exe, args: [] } });
+  }
+  for (const x of arr(raw.xbox)) {
+    if (!x.dir || !x.exe || !x.appId || !x.pfn || !/^[\w.-]+_[a-z0-9]+$/i.test(x.pfn) || !/^[\w.-]+$/.test(x.appId)) continue;
+    const exe = path.join(x.dir, 'Content', x.exe);
+    if (!(await stat(exe).catch(() => null))) continue;
+    const name = x.name && !/^ms-resource:/i.test(x.name) ? x.name : (x.folder ?? path.basename(x.dir));
+    out.push({ id: `xbox-${x.pfn}`, name, source: 'xbox', exe, launch: { exe: path.join(systemRoot, 'explorer.exe'), args: [`shell:AppsFolder\\${x.pfn}!${x.appId}`] } });
+  }
+  return out;
+}
+
+export async function scanLibrary(env: GameEnv, query?: (file: string, args: string[]) => Promise<string>): Promise<LibraryEntry[]> {
+  const out: LibraryEntry[] = [];
+  out.push(...(await riotGames(env).catch(() => [])));
+  if (query) {
+    const ps = path.join(env.vars.SystemRoot ?? 'C:\\Windows', 'System32', 'WindowsPowerShell', 'v1.0', 'powershell.exe');
+    const raw = await query(ps, ['-NoProfile', '-NonInteractive', '-Command', STORES_SCRIPT]).catch(() => '');
+    out.push(...(await parseStores(raw, env.vars.SystemRoot ?? 'C:\\Windows').catch(() => [])));
+  }
   // Steam: every library folder's appmanifest_<id>.acf names the game and its folder under steamapps\common.
   for (const lib of await steamLibraries(env.steamPath)) {
     const apps = path.join(lib, 'steamapps');

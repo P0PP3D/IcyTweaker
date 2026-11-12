@@ -517,9 +517,10 @@ app.whenReady().then(async () => {
     let libraryGames: LibraryEntry[] = [];
     const exeName = (p: string) => path.win32.basename(p).toLowerCase();
     // Games with a profile already have their own entry (and Boost watches their exe).
-    const profiled = (g: LibraryEntry) => gameProfiles.some((p) => p.exe.includes(exeName(g.exe)) || (p.install.steam !== undefined && g.id === `steam-${p.install.steam}`));
+    const profiled = (g: LibraryEntry) =>
+      gameProfiles.some((p) => p.exe.includes(exeName(g.exe)) || (p.install.steam !== undefined && g.id === `steam-${p.install.steam}`) || (p.install.riot !== undefined && g.id === `riot-${p.install.riot}`));
     async function refreshLibrary() {
-      libraryGames = await scanLibrary(gameEnv).catch(() => libraryGames);
+      libraryGames = await scanLibrary(gameEnv, (file, args) => adapter.query(file, args, 60_000)).catch(() => libraryGames);
       // Game Boost also watches library games that have no profile.
       const covered = new Set(boostGames.flatMap((g) => g.exe));
       for (const g of libraryGames) {
@@ -530,6 +531,29 @@ app.whenReady().then(async () => {
       return libraryGames;
     }
     void refreshLibrary();
+    /**
+     * Start a game program as a normal user. The installed app runs as administrator, and a launcher started from it
+     * would be too: an elevated Riot Client can't hand the launch to the one already running (different integrity
+     * level), so only the client window showed. Instead: a shortcut (same target and arguments as the store's own
+     * Start menu one) opened by Explorer, which starts it in the normal desktop session, exactly like a double-click.
+     */
+    async function startUnelevated(key: string, exe: string, args: string[]) {
+      if (!admin) {
+        spawn(exe, args, { detached: true, stdio: 'ignore', cwd: path.dirname(exe) }).on('error', () => {}).unref();
+        return;
+      }
+      const lnk = path.join(safety.dataDir, 'launch', `${key.replace(/[^\w.-]/g, '_')}.lnk`);
+      await mkdir(path.dirname(lnk), { recursive: true });
+      const q = (s: string) => `'${s.replace(/'/g, "''")}'`;
+      const script = `$s = (New-Object -ComObject WScript.Shell).CreateShortcut(${q(lnk)}); $s.TargetPath = ${q(exe)}; $s.Arguments = ${q(args.join(' '))}; $s.WorkingDirectory = ${q(path.dirname(exe))}; $s.Save()`;
+      await new Promise<void>((resolve, reject) =>
+        spawn(POWERSHELL_EXE, ['-NoProfile', '-NonInteractive', '-Command', script], { stdio: 'ignore', windowsHide: true })
+          .on('error', reject)
+          .on('exit', (code) => (code === 0 ? resolve() : reject(new Error('Could not prepare the game shortcut.')))),
+      );
+      spawn(path.join(sysRoot, 'explorer.exe'), [lnk], { detached: true, stdio: 'ignore' }).on('error', () => {}).unref();
+    }
+
     /** The exe behind a profile id or a library game id. */
     async function exeFor(target: unknown): Promise<string | null> {
       const p = gameProfiles.find((g) => g.id === target);
@@ -1364,7 +1388,13 @@ app.whenReady().then(async () => {
       async checkups() {
         const ids = ['nvidia-shaders', 'amd-shaders', 'intel-shaders', 'directx-shader-cache', 'steam-shaders'];
         const scans = await Promise.all(ids.map((id) => cleaner.get(id)).filter((x) => !!x).map((x) => cleaner.scan(x!)));
+        // Chipset drivers (AMD SMBus/GPIO/PSP, Intel chipset/SMBus/Management Engine): the newest date among them.
+        const chipScript =
+          "$d = @(Get-CimInstance Win32_PnPSignedDriver | Where-Object { $_.DriverDate -and $_.Manufacturer -match 'AMD|Advanced Micro|Intel' -and $_.DeviceName -match 'SMBus|GPIO|PSP|Chipset|Management Engine' } | " +
+          "Sort-Object DriverDate -Descending | Select-Object -First 1); if ($d) { $d[0].Manufacturer + '|' + ([datetime]$d[0].DriverDate).ToString('yyyy-MM-dd') }";
+        const chip = (await adapter.query(POWERSHELL_EXE, ['-NoProfile', '-NonInteractive', '-Command', chipScript], 60_000).catch(() => '')).trim().split('|');
         return {
+          chipset: chip.length === 2 && /^\d{4}-\d\d-\d\d$/.test(chip[1]) ? { vendor: /intel/i.test(chip[0]) ? 'Intel' : 'AMD', driverDate: chip[1] } : null,
           shaderBytes: scans.reduce((a, s) => a + s.bytes, 0),
           shaderIds: scans.filter((s) => s.bytes > 0).map((s) => s.id),
           gpus: (hwCache?.hw.gpus ?? []).filter((g) => g.vendor !== 'other').map((g) => ({ name: g.name, vendor: g.vendor, driverDate: g.driverDate ?? null })),
@@ -1392,6 +1422,18 @@ app.whenReady().then(async () => {
       },
 
       setFocus: async (on: unknown) => (typeof on === 'boolean' ? setFocusMode(on) : { ok: false, message: 'Invalid request.' }),
+
+      /** Official driver download pages, opened in the browser (fixed list; nothing is downloaded by the app). */
+      async openVendorPage(kind: unknown) {
+        const pages: Record<string, string> = {
+          amd: 'https://www.amd.com/en/support/download/drivers.html', // AMD's auto-detect page: graphics and chipset drivers
+          intel: 'https://www.intel.com/content/www/us/en/support/detect.html', // Intel Driver & Support Assistant
+        };
+        const url = typeof kind === 'string' ? pages[kind] : undefined;
+        if (!url) return { ok: false, message: 'Invalid request.' };
+        await shell.openExternal(url);
+        return { ok: true, message: 'Opened the official driver page in your browser.' };
+      },
 
       /** What's in the Recycle Bin (all drives), through the Windows shell. Read-only. */
       async recycleItems() {
@@ -1652,22 +1694,7 @@ app.whenReady().then(async () => {
         if (!t) return { ok: false, message: `${p.name} isn't installed.` };
         try {
           if ('url' in t) await shell.openExternal(t.url);
-          else if (admin) {
-            // The installed app runs as administrator, and a launcher started from it would be too. An elevated Riot
-            // Client can't hand the launch to the one already running (different integrity level), so only the client
-            // window shows. Instead: a shortcut (same target and arguments as Riot's own Start menu one) opened by
-            // Explorer, which starts it in the normal, unelevated desktop session, exactly like a double-click.
-            const lnk = path.join(safety.dataDir, 'launch', `${p.id}.lnk`);
-            await mkdir(path.dirname(lnk), { recursive: true });
-            const q = (s: string) => `'${s.replace(/'/g, "''")}'`;
-            const script = `$s = (New-Object -ComObject WScript.Shell).CreateShortcut(${q(lnk)}); $s.TargetPath = ${q(t.exe)}; $s.Arguments = ${q(t.args.join(' '))}; $s.WorkingDirectory = ${q(path.dirname(t.exe))}; $s.Save()`;
-            await new Promise<void>((resolve, reject) =>
-              spawn(POWERSHELL_EXE, ['-NoProfile', '-NonInteractive', '-Command', script], { stdio: 'ignore', windowsHide: true })
-                .on('error', reject)
-                .on('exit', (code) => (code === 0 ? resolve() : reject(new Error('Could not prepare the game shortcut.')))),
-            );
-            spawn(path.join(sysRoot, 'explorer.exe'), [lnk], { detached: true, stdio: 'ignore' }).on('error', () => {}).unref();
-          } else spawn(t.exe, t.args, { detached: true, stdio: 'ignore', cwd: path.dirname(t.exe) }).on('error', () => {}).unref();
+          else await startUnelevated(p.id, t.exe, t.args);
           await safety.log('game-launch', p.id, true, 'url' in t ? t.url : t.exe);
           return { ok: true, message: `Starting ${p.name}…` };
         } catch (err) {
@@ -1718,9 +1745,15 @@ app.whenReady().then(async () => {
         const g = libraryGames.find((x) => x.id === id);
         if (!g) return { ok: false, message: 'Invalid request.' };
         if ((await runningProcesses(adapter)).has(exeName(g.exe))) return { ok: false, message: `${g.name} is already running.` };
-        await shell.openExternal('url' in g.launch ? g.launch.url : g.exe); // launch URLs are built by scanLibrary only
-        await safety.log('game-launch', g.id, true, 'url' in g.launch ? g.launch.url : g.exe);
-        return { ok: true, message: `Starting ${g.name}…` };
+        try {
+          // Launch targets are built by scanLibrary only (store URLs, or a store launcher / the game's exe with fixed args).
+          if ('url' in g.launch) await shell.openExternal(g.launch.url);
+          else await startUnelevated(g.id, g.launch.exe, g.launch.args);
+          await safety.log('game-launch', g.id, true, 'url' in g.launch ? g.launch.url : g.launch.exe);
+          return { ok: true, message: `Starting ${g.name}…` };
+        } catch (err) {
+          return { ok: false, message: `${g.name}: ${(err as Error).message}` };
+        }
       },
 
       async getWinSettings(target: unknown) {

@@ -775,6 +775,8 @@ function WinSettings({ target, busy, act }: { target: string; busy: boolean; act
   );
 }
 
+const STORE: Record<LibraryGame['source'], string> = { steam: 'Steam', epic: 'Epic Games', riot: 'Riot Games', ubisoft: 'Ubisoft Connect', gog: 'GOG', xbox: 'Xbox app' };
+
 /** A library game without a profile: play it, set its Windows settings. */
 function LibraryPanel({ g, icon, busy, act, onPlay }: { g: LibraryGame; icon?: string | null; busy: boolean; act: Act; onPlay: () => void }) {
   const [art, setArt] = useState<string | null>(null);
@@ -793,7 +795,7 @@ function LibraryPanel({ g, icon, busy, act, onPlay }: { g: LibraryGame; icon?: s
           <GameIcon name={g.name} src={icon} large />
           <div>
             <h3 className="text-lg font-semibold text-slate-100">{g.name}</h3>
-            <p className="text-xs text-slate-500">{g.source === 'steam' ? 'Steam' : 'Epic Games'} · no settings profile (Game Boost, Play and Windows settings work)</p>
+            <p className="text-xs text-slate-500">{STORE[g.source]} · no settings profile (Game Boost, Play and Windows settings work)</p>
           </div>
         </div>
         <Button primary disabled={busy} onClick={() => onPlay()}>
@@ -1152,7 +1154,7 @@ export function Games({ busy, act, ask }: { busy: boolean; act: Act; ask: Ask })
                       <GameIcon name={g.name} src={libIcons[g.id]} />
                       <div className="min-w-0">
                         <div className="truncate text-sm text-slate-100">{g.name}</div>
-                        <div className="text-xs text-slate-500">{g.source === 'steam' ? 'Steam' : 'Epic Games'}</div>
+                        <div className="text-xs text-slate-500">{STORE[g.source]}</div>
                       </div>
                     </button>
                     <button

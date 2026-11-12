@@ -82,6 +82,7 @@ const api: OptimizerApi = {
   monitors: call('monitors'),
   displayModes: call('displayModes'),
   checkups: call('checkups'),
+  openVendorPage: call('openVendorPage'),
   lastScans: call('lastScans'),
   libraryArt: call('libraryArt'),
   recycleItems: call('recycleItems'),

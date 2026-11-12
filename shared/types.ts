@@ -45,7 +45,11 @@ export interface TweakView extends TweakMeta {
   anticheatWarning?: string;
   /** When the app first changed it (it has a backup). */
   changedAt?: string;
+  tags?: TweakTag[];
 }
+
+/** power: uses more power / runs warmer; beta: its exact setting is still marked "verify"; preference: taste, not speed (never in presets). */
+export type TweakTag = 'power' | 'beta' | 'preference';
 
 export interface FixMeta {
   id: string;
@@ -295,7 +299,7 @@ export interface DriverBackupView {
 export interface LibraryGame {
   id: string;
   name: string;
-  source: 'steam' | 'epic';
+  source: 'steam' | 'epic' | 'riot' | 'ubisoft' | 'gog' | 'xbox';
   /** Its main program (best guess for Steam: the largest .exe in its folder). */
   exe: string;
 }
@@ -902,7 +906,9 @@ export interface OptimizerApi {
   bootInfo(): Promise<{ info?: BootInfo; error?: string }>;
   monitors(): Promise<MonitorInfo[]>;
   /** Home checkups: shader cache total and GPU driver dates. */
-  checkups(): Promise<{ shaderBytes: number; shaderIds: string[]; gpus: Array<{ name: string; vendor: string; driverDate: string | null }> }>;
+  checkups(): Promise<{ chipset: { vendor: 'AMD' | 'Intel'; driverDate: string } | null; shaderBytes: number; shaderIds: string[]; gpus: Array<{ name: string; vendor: string; driverDate: string | null }> }>;
+  /** Official AMD / Intel driver page in the browser. */
+  openVendorPage(kind: 'amd' | 'intel'): Promise<ActionReport>;
   /** The primary display's modes (Game Boost display option). */
   displayModes(): Promise<DisplayMode[]>;
   getSettings(): Promise<AppSettings>;

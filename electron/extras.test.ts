@@ -1,7 +1,11 @@
 // Share codes, Minecraft's key:value format, FPS-drop detection, Game Boost display mode, the new game profiles.
 // Fake adapter and ./.test-tmp/extras only; nothing written to Windows.
 import { mkdir, rm, writeFile } from 'node:fs/promises';
-import { scanLibrary } from './games/library';
+import { parseStores, scanLibrary } from './games/library';
+import { advancedTweaks } from './advanced/advanced';
+import { presets } from './tweaks/presets';
+import { TWEAK_TAGS, hasTag } from './tweaks/tags';
+import { buildTargets } from './cleaner/cleaner';
 import { DEFAULT_FOCUS, createFocus, validateFocus } from './games/focus';
 import { createStartup, parseLogonTasks, startupSources } from './apps/startup';
 import { parseBoot } from './system/boot';
@@ -256,6 +260,53 @@ describe('startup apps', () => {
     await safety.undoAll();
     expect(await fake.read(run)).toEqual(sz('C:\\spotify.exe'));
     await expect(s.remove('task|\\ASUS\\Agent')).rejects.toThrow(/only be turned off/);
+  });
+});
+
+describe('labels, stores and launcher cleaning', () => {
+  it('every label points at a real tweak, and presets never include preferences', () => {
+    const ids = new Set([...generalTweaks, ...advancedTweaks([])].map((t) => t.id));
+    for (const id of Object.keys(TWEAK_TAGS)) expect(ids.has(id), id).toBe(true);
+    for (const p of presets) for (const id of p.tweakIds) expect(hasTag(id, 'preference'), `${p.id}: ${id}`).toBe(false);
+  });
+  it('Ubisoft, GOG and Xbox games from the store query (only ones whose files exist; junk ids refused)', async () => {
+    const root = dir();
+    await mkdir(path.join(root, 'Ubi', 'Far Cry'), { recursive: true });
+    await writeFile(path.join(root, 'Ubi', 'Far Cry', 'FarCry.exe'), Buffer.alloc(100));
+    await mkdir(path.join(root, 'XboxGames', 'Mc', 'Content'), { recursive: true });
+    await writeFile(path.join(root, 'XboxGames', 'Mc', 'Content', 'Minecraft.Windows.exe'), Buffer.alloc(10));
+    await writeFile(path.join(root, 'gog.exe'), Buffer.alloc(10));
+    const raw = {
+      ubisoft: [{ id: '5', dir: path.join(root, 'Ubi', 'Far Cry') }, { id: 'x;y', dir: root }, { id: '6', dir: path.join(root, 'missing') }],
+      gog: { id: '1207', name: 'Witcher', exe: path.join(root, 'gog.exe') },
+      xbox: [{ dir: path.join(root, 'XboxGames', 'Mc'), name: 'ms-resource:Name', folder: 'Mc', exe: 'Minecraft.Windows.exe', appId: 'Game', pfn: 'MICROSOFT.MINECRAFTUWP_8wekyb3d8bbwe' }, { dir: root, exe: 'a.exe', appId: 'G', pfn: 'bad pfn' }],
+    };
+    const list = await parseStores(Buffer.from(JSON.stringify(raw)).toString('base64'), 'C:\\Windows');
+    expect(list.map((g) => [g.id, g.name, g.launch])).toEqual([
+      ['ubisoft-5', 'Far Cry', { url: 'uplay://launch/5/0' }],
+      ['gog-1207', 'Witcher', { exe: path.join(root, 'gog.exe'), args: [] }],
+      ['xbox-MICROSOFT.MINECRAFTUWP_8wekyb3d8bbwe', 'Mc', { exe: 'C:\\Windows\\explorer.exe', args: ['shell:AppsFolder\\MICROSOFT.MINECRAFTUWP_8wekyb3d8bbwe!Game'] }],
+    ]);
+  });
+  it('Riot games come from the client metadata and launch through Riot Client', async () => {
+    const pd = dir();
+    const game = path.join(pd, 'Riot Games', 'League of Legends');
+    await mkdir(path.join(pd, 'Riot Games', 'Metadata', 'league_of_legends.live'), { recursive: true });
+    await mkdir(game, { recursive: true });
+    await writeFile(path.join(game, 'LeagueClient.exe'), Buffer.alloc(50));
+    await writeFile(path.join(pd, 'Riot Games', 'RiotClientInstalls.json'), JSON.stringify({ rc_default: 'C:/Riot Games/Riot Client/RiotClientServices.exe' }));
+    await writeFile(path.join(pd, 'Riot Games', 'Metadata', 'league_of_legends.live', 'league_of_legends.live.product_settings.yaml'), `product_install_full_path: "${game.replace(/\\/g, '/')}"\n`);
+    const list = await scanLibrary({ vars: {}, steamPath: path.join(pd, 'nosteam'), programData: pd });
+    expect(list.map((g) => [g.id, g.name, g.launch])).toEqual([
+      ['riot-league_of_legends.live', 'League of Legends', { exe: path.normalize('C:/Riot Games/Riot Client/RiotClientServices.exe'), args: ['--launch-product=league_of_legends', '--launch-patchline=live'] }],
+    ]);
+  });
+  it('launcher junk targets exist, keep recent logs, and need the launcher closed where it holds the files', () => {
+    const env = { LOCALAPPDATA: 'C:\\L', APPDATA: 'C:\\A', TEMP: 'C:\\Temp', SystemRoot: 'C:\\Windows', ProgramData: 'C:\\P', ProgramFilesX86: 'C:\\PF86', USERPROFILE: 'C:\\U', recycleBins: [], steamPath: 'C:\\Steam' };
+    const t = Object.fromEntries(buildTargets(env).map((x) => [x.id, x]));
+    for (const id of ['steam-logs', 'epic-logs', 'riot-logs', 'ubisoft-logs', 'game-logs']) expect(t[id]?.minAgeHours, id).toBe(24);
+    expect(t['steam-depotcache'].needsClosed).toBe(true);
+    expect(t['ubisoft-cache'].risk).toBe('caution');
   });
 });
 

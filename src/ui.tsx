@@ -1,6 +1,6 @@
 import { useState, type ReactNode } from 'react';
 import clsx from 'clsx';
-import type { Risk, TweakStatus, TweakView } from '../shared/types';
+import type { Risk, TweakStatus, TweakTag, TweakView } from '../shared/types';
 import { Icon, type IconName } from './icons';
 
 export const RISK_STYLE: Record<Risk, string> = {
@@ -69,6 +69,25 @@ export function Banner({ tone, children }: { tone: 'info' | 'warn' | 'reboot' | 
 }
 
 /** "1 WARNING" chip that expands to show the warning text. */
+const TAG_LOOK: Record<TweakTag, { label: string; cls: string; title: string }> = {
+  power: { label: 'Power hungry', cls: 'bg-orange-500/10 text-orange-300 ring-orange-500/30', title: 'Uses more power and runs warmer: best on desktops, or laptops plugged in.' },
+  beta: { label: 'Beta', cls: 'bg-violet-500/10 text-violet-300 ring-violet-500/30', title: "Its exact setting isn't confirmed on every Windows version yet. It can always be turned back off." },
+  preference: { label: 'Preference', cls: 'bg-slate-500/10 text-slate-300 ring-slate-500/30', title: 'A matter of taste, not speed. Presets never change it.' },
+};
+
+/** Hone-style labels on a tweak (power hungry, beta, preference). */
+export function TagChips({ tags }: { tags?: TweakTag[] }) {
+  return (
+    <>
+      {(tags ?? []).map((tag) => (
+        <span key={tag} title={TAG_LOOK[tag].title} className={clsx('rounded-md px-1.5 py-0.5 text-xs font-medium ring-1', TAG_LOOK[tag].cls)}>
+          {TAG_LOOK[tag].label}
+        </span>
+      ))}
+    </>
+  );
+}
+
 export function WarningChip({ text }: { text?: string }) {
   const [open, setOpen] = useState(false);
   if (!text) return null;
@@ -135,6 +154,7 @@ export function TweakRow({
             </span>
           )}
           <WarningChip text={t.warning} />
+          <TagChips tags={t.tags} />
           {t.changedAt && <span className="text-xs text-slate-500">changed {new Date(t.changedAt).toLocaleDateString()}</span>}
           {!t.changedAt && t.status === 'applied' && (
             <span className="text-xs text-slate-500" title="IcyTweaker didn't change this: it was already set (Windows' default or another tool).">
@@ -244,6 +264,11 @@ export function TweakCard({
           <WarningChip text={t.warning} />
         </div>
         {(t.unfit || t.anticheatWarning) && <p className="text-xs text-orange-200/90">{[t.unfit, t.anticheatWarning].filter(Boolean).join(' ')}</p>}
+        {t.tags?.length ? (
+          <div className="flex flex-wrap gap-1.5">
+            <TagChips tags={t.tags} />
+          </div>
+        ) : null}
         <div className="mt-auto flex items-end justify-between gap-3 pt-2">
           <div className="min-w-0 text-xs">
             <div className={clsx(on ? 'text-sky-300' : t.status === 'partial' ? 'text-amber-300' : 'text-slate-500')}>{STATUS_TEXT[t.status]}</div>
