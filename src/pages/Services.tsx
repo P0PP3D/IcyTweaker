@@ -137,10 +137,10 @@ function ServiceManager({ busy, act, ask }: { busy: boolean; act: Act; ask: Ask 
                 <div className="min-w-0 flex-1">
                   <div className="flex flex-wrap items-center gap-2">
                     <span className="text-sm font-medium text-slate-100">{s.displayName}</span>
-                    <span className="font-mono text-[11px] text-slate-500">{s.name}</span>
+                    <span className="font-mono text-xs text-slate-500">{s.name}</span>
                     {s.protected && <Badge className={MUTED_BADGE}>protected</Badge>}
                     {s.perUser && <Badge className={MUTED_BADGE}>per-user</Badge>}
-                    {s.dependents.length > 0 && <span className="text-[11px] text-slate-500">{s.dependents.length} depend on it</span>}
+                    {s.dependents.length > 0 && <span className="text-xs text-slate-500">{s.dependents.length} depend on it</span>}
                   </div>
                   {s.description && <p className="line-clamp-2 text-xs text-slate-400" title={s.description}>{s.description}</p>}
                 </div>

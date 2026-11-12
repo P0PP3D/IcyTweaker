@@ -186,7 +186,7 @@ export function createEngine(o: {
   /** Restore point first; if that fails, change nothing. */
   async function withRestorePoint(label: string, fn: () => Promise<ActionReport>): Promise<ActionReport> {
     try {
-      await safety.restorePoint(`IcyCleaner: ${label}`);
+      await safety.restorePoint(`IcyTweaker: ${label}`);
     } catch (err) {
       return { ok: false, message: `Restore point failed, nothing was changed: ${errText(err)}` };
     }
@@ -333,7 +333,7 @@ export function createEngine(o: {
     createRestorePoint: () =>
       mutate(async () => {
         try {
-          await safety.restorePoint('IcyCleaner: Manual restore point', true); // asked for: always call Windows
+          await safety.restorePoint('IcyTweaker: Manual restore point', true); // asked for: always call Windows
           return { ok: true, message: o.live ? 'Restore point created.' : 'Restore point skipped (dry-run).' };
         } catch (err) {
           return { ok: false, message: `Restore point failed: ${errText(err)}` };

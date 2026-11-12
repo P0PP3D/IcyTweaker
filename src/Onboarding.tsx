@@ -21,10 +21,10 @@ export function Onboarding({ state, onDone }: { state: AppState; onDone: () => v
 
   const steps = [
     {
-      title: 'Welcome to IcyCleaner',
+      title: 'Welcome to IcyTweaker',
       body: (
         <>
-          <p>IcyCleaner changes Windows settings that get in the way of games, and cleans up what Windows leaves behind.</p>
+          <p>IcyTweaker changes Windows settings that get in the way of games, and cleans up what Windows leaves behind.</p>
           <p>Before the app first changes any value, it saves the original. Every tweak can be reverted, and “Undo all changes” puts back everything the app touched.</p>
           {!state.live && <p className="text-sky-300">You are in dry-run mode: changes are simulated and nothing is written to Windows.</p>}
         </>
@@ -39,7 +39,7 @@ export function Onboarding({ state, onDone }: { state: AppState; onDone: () => v
       title: 'Create a restore point',
       body: (
         <>
-          <p>A Windows restore point lets you roll the whole system back, even outside this app. IcyCleaner also creates one before every bulk change.</p>
+          <p>A Windows restore point lets you roll the whole system back, even outside this app. IcyTweaker also creates one before every bulk change.</p>
           {!state.isAdmin && state.live && <p className="text-amber-300">Restore points need administrator rights. Relaunch as admin first, or skip this step.</p>}
         </>
       ),

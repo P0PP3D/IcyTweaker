@@ -53,6 +53,9 @@ import { RUNTIMES, installRuntimes, wingetPath } from './resources/runtimes';
 import { LATENCY_TARGETS, dnsBenchmark, latencyTest, tcpProbe, validHost } from './network/tests';
 import { appendFile, copyFile, mkdir, readFile, writeFile } from 'node:fs/promises';
 
+// The app was renamed IcyCleaner -> IcyTweaker. Its data folder keeps the old name: the backups Undo needs, the
+// settings and the logs are there. (An explicit --user-data-dir, as in tests, still wins.)
+if (!app.commandLine.hasSwitch('user-data-dir')) app.setPath('userData', path.join(app.getPath('appData'), 'IcyCleaner'));
 const live = isLiveEnv(process.env, app.isPackaged); // installed builds are live; `npm run dev` is dry-run
 const devUrl = process.env.VITE_DEV_SERVER_URL;
 
@@ -85,7 +88,7 @@ function createWindow(show = true) {
     backgroundColor: '#07090d',
     autoHideMenuBar: true,
     frame: false, // custom title bar in the renderer (TitleBar in App.tsx)
-    title: `IcyCleaner${live ? ' (LIVE)' : ' (dry-run)'}`,
+    title: `IcyTweaker${live ? ' (LIVE)' : ' (dry-run)'}`,
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
@@ -240,6 +243,8 @@ app.whenReady().then(async () => {
     let settings = {
       onboarded: saved.onboarded === true,
       windowsBuild: (typeof saved.windowsBuild === 'string' ? saved.windowsBuild : null) as string | null,
+      /** The command the Start with Windows task was last pointed at. */
+      startCmd: (typeof saved.startCmd === 'string' ? saved.startCmd : null) as string | null,
       boost: { ...DEFAULT_BOOST, ...(saved.boost as Partial<BoostSettings> | undefined) },
       app: { tray: true, notify: true, startWithWindows: false, weeklyClean: false, lastCleanAt: null, deviceType: 'auto', laptopProfile: false, overlayWithBoost: false, hotkeys: false, autoUpdate: true, theme: 'dark', accent: 'blue', ...savedApp } as AppSettings,
     };
@@ -255,6 +260,16 @@ app.whenReady().then(async () => {
     if (buildNow && buildNow !== buildBefore) {
       settings = { ...settings, windowsBuild: buildNow };
       await saveSettings().catch(() => {});
+    }
+    // Start with Windows: the sign-in task holds the program's path, which changed with the rename (IcyCleaner.exe ->
+    // IcyTweaker.exe) and can change with the install folder. Re-point it once when the path differs.
+    if (app.isPackaged && live && admin && settings.app.startWithWindows) {
+      const startCmd = `"${process.execPath}" --tray`;
+      if (settings.startCmd !== startCmd)
+        void setLogonTask(adapter, START_TASK, startCmd).then(() => {
+          settings = { ...settings, startCmd };
+          return saveSettings();
+        }, () => {});
     }
     keepInTray = () => settings.app.tray;
     const detectedType = (): 'desktop' | 'laptop' => (hwCache?.hw.laptop ? 'laptop' : 'desktop');
@@ -286,13 +301,13 @@ app.whenReady().then(async () => {
     // System tray: open, Game Boost switch, quit.
     const trayIconPath = path.join(__dirname, '..', 'dist', 'icon.png');
     const tray = new Tray(nativeImage.createFromPath(trayIconPath).resize({ width: 16, height: 16 }));
-    tray.setToolTip(`IcyCleaner${live ? '' : ' (dry-run)'}`);
+    tray.setToolTip(`IcyTweaker${live ? '' : ' (dry-run)'}`);
     tray.on('click', showWindow);
     function updateTray() {
       const active = boost.state().active;
       tray.setContextMenu(
         Menu.buildFromTemplate([
-          { label: 'Open IcyCleaner', click: showWindow },
+          { label: 'Open IcyTweaker', click: showWindow },
           { type: 'separator' },
           {
             label: active ? `Game Boost (boosting ${active.game})` : 'Game Boost',
@@ -323,7 +338,7 @@ app.whenReady().then(async () => {
     }
     updateTray();
 
-    // Weekly Health Check: while IcyCleaner runs, when 7 days have passed and the PC has been idle 10 minutes.
+    // Weekly Health Check: while IcyTweaker runs, when 7 days have passed and the PC has been idle 10 minutes.
     async function weeklyClean() {
       if (!settings.app.weeklyClean) return;
       const last = settings.app.lastCleanAt ? Date.parse(settings.app.lastCleanAt) : 0;
@@ -520,7 +535,7 @@ app.whenReady().then(async () => {
     let updateUrl: string | null = null;
     // Auto-update (installed builds with a release repository): GitHub releases through electron-updater.
     // With Settings > Automatic updates on (default), it checks 30 s after start and every 6 h, downloads in the
-    // background and installs when IcyCleaner quits (or at "Restart and install"). Off = only the Settings buttons.
+    // background and installs when IcyTweaker quits (or at "Restart and install"). Off = only the Settings buttons.
     // The installer is not code-signed yet, so updates are trusted through HTTPS from the project's own GitHub
     // releases; once signed, set build.win.publisherName so electron-updater also checks the update's signature.
     const [repoOwner, repoName] = (pkg.updateRepo ?? '').split('/');
@@ -533,9 +548,9 @@ app.whenReady().then(async () => {
     if (canAutoUpdate) {
       autoUpdater.setFeedURL({ provider: 'github', owner: repoOwner, repo: repoName });
       applyAutoUpdate();
-      autoUpdater.on('download-progress', (p) => progress({ task: 'update', done: p.transferred, total: p.total, current: 'IcyCleaner update' }));
+      autoUpdater.on('download-progress', (p) => progress({ task: 'update', done: p.transferred, total: p.total, current: 'IcyTweaker update' }));
       autoUpdater.on('update-downloaded', (info) => {
-        if (!updateDownloaded) notify(`IcyCleaner ${info.version} downloaded`, 'It installs when you quit IcyCleaner, or restart now from Settings > Updates.');
+        if (!updateDownloaded) notify(`IcyTweaker ${info.version} downloaded`, 'It installs when you quit IcyTweaker, or restart now from Settings > Updates.');
         updateDownloaded = true;
         progress({ task: 'update', done: 1, total: 1, current: '' });
       });
@@ -562,7 +577,7 @@ app.whenReady().then(async () => {
         const p = typeof pid === 'number' ? processList.get(pid) : undefined;
         if (!p) return { ok: false, message: 'Invalid request.' };
         const ours = [process.pid, ...BrowserWindow.getAllWindows().map((w) => w.webContents.getOSProcessId())];
-        if (p.hint === 'system' || ours.includes(p.pid)) return { ok: false, message: `${p.name} is part of Windows or IcyCleaner and is not ended here.` };
+        if (p.hint === 'system' || ours.includes(p.pid)) return { ok: false, message: `${p.name} is part of Windows or IcyTweaker and is not ended here.` };
         try {
           await adapter.exec(path.join(sysRoot, 'System32', 'taskkill.exe'), ['/PID', String(p.pid), '/T', '/F'], 30_000);
           await safety.log('end-process', `${p.name} (${p.pid})`, true, live ? undefined : 'dry-run: not ended');
@@ -634,7 +649,7 @@ app.whenReady().then(async () => {
             await safety.log('install-pawnio', 'namazso.PawnIO', true, live ? undefined : 'dry-run: not installed');
           }
           await safety.log('setup-cpu-temp', 'LibreHardwareMonitor 0.9.6', true);
-          return { ok: true, message: `CPU temperature is set up${admin ? '' : '; it shows when IcyCleaner runs as administrator'}.` };
+          return { ok: true, message: `CPU temperature is set up${admin ? '' : '; it shows when IcyTweaker runs as administrator'}.` };
         } catch (err) {
           return { ok: false, message: (err as Error).message };
         }
@@ -732,17 +747,17 @@ app.whenReady().then(async () => {
         if (!canAutoUpdate) return { ok: false, message: 'Automatic updates work in the installed app with a release repository set.' };
         try {
           await autoUpdater.downloadUpdate();
-          await safety.log('update-download', 'IcyCleaner', true);
+          await safety.log('update-download', 'IcyTweaker', true);
           return { ok: true, message: 'Update downloaded. Restart to install it.' };
         } catch (err) {
-          await safety.log('update-download', 'IcyCleaner', false, (err as Error).message);
+          await safety.log('update-download', 'IcyTweaker', false, (err as Error).message);
           return { ok: false, message: `Update download failed: ${(err as Error).message}` };
         }
       },
 
       async installUpdate() {
         if (!canAutoUpdate || !updateDownloaded) return;
-        await safety.log('update-install', 'IcyCleaner', true);
+        await safety.log('update-install', 'IcyTweaker', true);
         await boost.end(); // power plan and priorities back before the app closes
         appQuitting = true;
         setImmediate(() => autoUpdater.quitAndInstall(false, true));
@@ -1226,9 +1241,9 @@ app.whenReady().then(async () => {
 
       async exportConfig() {
         const { canceled, filePath } = await dialog.showSaveDialog({
-          title: 'Export IcyCleaner settings',
-          defaultPath: path.join(app.getPath('documents'), `icycleaner-settings-${new Date().toISOString().slice(0, 10)}.json`),
-          filters: [{ name: 'IcyCleaner settings', extensions: ['json'] }],
+          title: 'Export IcyTweaker settings',
+          defaultPath: path.join(app.getPath('documents'), `icytweaker-settings-${new Date().toISOString().slice(0, 10)}.json`),
+          filters: [{ name: 'IcyTweaker settings', extensions: ['json'] }],
         });
         if (canceled || !filePath) return { ok: false, message: 'Export cancelled.' };
         const cfg = buildConfig((await engine.getState()).tweaks, Number(os.release().split('.')[2]) || 0, settings.boost);
@@ -1248,7 +1263,7 @@ app.whenReady().then(async () => {
         try {
           if (fromClipboard === true) text = fromShareCode(await clipboard.readText());
           else {
-            const { canceled, filePaths } = await dialog.showOpenDialog({ title: 'Import IcyCleaner settings', properties: ['openFile'], filters: [{ name: 'IcyCleaner settings', extensions: ['json'] }] });
+            const { canceled, filePaths } = await dialog.showOpenDialog({ title: 'Import IcyTweaker settings', properties: ['openFile'], filters: [{ name: 'IcyTweaker settings', extensions: ['json'] }] });
             if (canceled || !filePaths[0]) return { error: 'Import cancelled.' };
             file = filePaths[0];
             text = await readFile(file, 'utf8');
@@ -1503,17 +1518,18 @@ app.whenReady().then(async () => {
           else if (admin) {
             // The installed app runs as administrator, and a launcher started from it would be too. An elevated Riot
             // Client can't hand the launch to the one already running (different integrity level), so only the client
-            // window shows. runas /trustlevel:0x20000 starts it as a normal (unelevated) user process instead.
-            // verify: Valorant through Riot Client on a PC where Riot Client is already open.
-            const cmd = [`"${t.exe}"`, ...t.args].join(' '); // args are built by launchTarget only (no quotes)
-            spawn(path.join(sysRoot, 'System32', 'runas.exe'), ['/trustlevel:0x20000', `"${cmd.replace(/"/g, '\\"')}"`], {
-              detached: true,
-              stdio: 'ignore',
-              cwd: path.dirname(t.exe),
-              windowsVerbatimArguments: true,
-            })
-              .on('error', () => {})
-              .unref();
+            // window shows. Instead: a shortcut (same target and arguments as Riot's own Start menu one) opened by
+            // Explorer, which starts it in the normal, unelevated desktop session, exactly like a double-click.
+            const lnk = path.join(safety.dataDir, 'launch', `${p.id}.lnk`);
+            await mkdir(path.dirname(lnk), { recursive: true });
+            const q = (s: string) => `'${s.replace(/'/g, "''")}'`;
+            const script = `$s = (New-Object -ComObject WScript.Shell).CreateShortcut(${q(lnk)}); $s.TargetPath = ${q(t.exe)}; $s.Arguments = ${q(t.args.join(' '))}; $s.WorkingDirectory = ${q(path.dirname(t.exe))}; $s.Save()`;
+            await new Promise<void>((resolve, reject) =>
+              spawn(POWERSHELL_EXE, ['-NoProfile', '-NonInteractive', '-Command', script], { stdio: 'ignore', windowsHide: true })
+                .on('error', reject)
+                .on('exit', (code) => (code === 0 ? resolve() : reject(new Error('Could not prepare the game shortcut.')))),
+            );
+            spawn(path.join(sysRoot, 'explorer.exe'), [lnk], { detached: true, stdio: 'ignore' }).on('error', () => {}).unref();
           } else spawn(t.exe, t.args, { detached: true, stdio: 'ignore', cwd: path.dirname(t.exe) }).on('error', () => {}).unref();
           await safety.log('game-launch', p.id, true, 'url' in t ? t.url : t.exe);
           return { ok: true, message: `Starting ${p.name}…` };
@@ -1594,7 +1610,7 @@ app.whenReady().then(async () => {
       },
 
       async purgeStandby() {
-        if (live && !admin) return { ok: false, message: 'Needs administrator: relaunch IcyCleaner as admin.' };
+        if (live && !admin) return { ok: false, message: 'Needs administrator: relaunch IcyTweaker as admin.' };
         try {
           await purgeStandby(adapter);
           await safety.log('standby-purge', 'manual', true, live ? undefined : 'dry-run');
@@ -1640,7 +1656,7 @@ app.whenReady().then(async () => {
       async exportLog() {
         const { canceled, filePath } = await dialog.showSaveDialog({
           title: 'Export action log',
-          defaultPath: path.join(app.getPath('documents'), `icycleaner-log-${new Date().toISOString().slice(0, 10)}.jsonl`),
+          defaultPath: path.join(app.getPath('documents'), `icytweaker-log-${new Date().toISOString().slice(0, 10)}.jsonl`),
           filters: [{ name: 'JSON lines', extensions: ['jsonl'] }],
         });
         if (canceled || !filePath) return { ok: false, message: 'Export cancelled.' };
@@ -1662,7 +1678,7 @@ app.whenReady().then(async () => {
           detail:
             'Save your work first. Windows restarts 5 seconds after you confirm.\n\n' +
             'Create a restore point first? It saves Windows as it is now, so you can return to this point if anything goes wrong after the restart. ' +
-            'Changes made by IcyCleaner can always be undone from its own backup (Undo all changes).',
+            'Changes made by IcyTweaker can always be undone from its own backup (Undo all changes).',
           buttons: ['Create restore point, then restart', 'Restart without one', 'Cancel'],
           defaultId: 0,
           cancelId: 2,
@@ -1696,7 +1712,7 @@ app.whenReady().then(async () => {
     }
     createWindow(!process.argv.includes('--tray')); // --tray: started at sign-in, stay in the tray
   } catch (err) {
-    dialog.showErrorBox('IcyCleaner could not start', String(err));
+    dialog.showErrorBox('IcyTweaker could not start', String(err));
     app.exit(1);
   }
 });

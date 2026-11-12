@@ -1,4 +1,4 @@
-// Elevated "at sign-in" scheduled tasks. Installed IcyCleaner always runs as administrator, and Windows does not
+// Elevated "at sign-in" scheduled tasks. Installed IcyTweaker always runs as administrator, and Windows does not
 // start programs that need administrator from the Run / RunOnce registry keys; a scheduled task set to "run with
 // highest privileges" is the supported way. Tasks run only for the current user, only when signed in (/IT).
 import path from 'node:path';

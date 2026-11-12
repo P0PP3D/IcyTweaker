@@ -367,7 +367,7 @@ export interface FroststrapInfo {
   fpsCap: number | null;
   /** How many FastFlags Froststrap applies. */
   flags: number;
-  /** IcyCleaner changed the FPS flag (Reset puts the original back). */
+  /** IcyTweaker changed the FPS flag (Reset puts the original back). */
   changed: boolean;
 }
 
@@ -440,13 +440,13 @@ export interface PrivacySnapshot {
 }
 
 export interface AppSettings {
-  /** Closing the window keeps IcyCleaner in the system tray. */
+  /** Closing the window keeps IcyTweaker in the system tray. */
   tray: boolean;
   /** Notifications (Game Boost, scheduled cleaning). */
   notify: boolean;
   /** Start in the tray when you sign in. */
   startWithWindows: boolean;
-  /** Run Health Check weekly when the PC is idle (while IcyCleaner runs). */
+  /** Run Health Check weekly when the PC is idle (while IcyTweaker runs). */
   weeklyClean: boolean;
   lastCleanAt: string | null;
   /** Devices page: optimize as a desktop or laptop ('auto' = detected). */
@@ -594,7 +594,7 @@ export interface GameView {
   /** Read from the config file; empty when there is none. */
   current: GameValues;
   recommended: GameValues;
-  /** When IcyCleaner first changed this game's settings; null = not optimized. */
+  /** When IcyTweaker first changed this game's settings; null = not optimized. */
   optimizedAt?: string | null;
 }
 
@@ -822,7 +822,7 @@ export interface OptimizerApi {
   checkUpdates(): Promise<UpdateInfo>;
   openUpdatePage(): Promise<void>;
   downloadUpdate(): Promise<ActionReport>;
-  /** Closes IcyCleaner and installs the downloaded update. */
+  /** Closes IcyTweaker and installs the downloaded update. */
   installUpdate(): Promise<void>;
   /** Puts back every setting the app first changed at or after `savedAt` (newest first), behind a restore point. */
   undoSince(savedAt: string): Promise<ActionReport>;

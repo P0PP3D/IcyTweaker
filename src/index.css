@@ -6,10 +6,15 @@
   --panel: #0a0c11; /* main content panel */
   --card: #0e1117; /* cards and rows */
   --card-2: #131722; /* raised parts of cards, inputs */
-  --line: rgb(var(--ink) / 0.07);
+  --line: rgb(var(--ink) / 0.09);
   --accent: var(--color-sky-400);
   --ink: 255 255 255; /* overlays and hairlines: white on dark, ink on light */
   --text: #e6e9ef;
+  /* Readability: secondary text a step lighter than Tailwind's slate on these near-black panels (WCAG AA for
+     slate-500 hints, comfortable slate-400 body text). The light theme sets its own below. */
+  --color-slate-400: oklch(77% 0.035 256.8);
+  --color-slate-500: oklch(66% 0.04 257.4);
+  --color-slate-600: oklch(52% 0.043 257.3);
 }
 
 html,
@@ -18,6 +23,8 @@ body {
   color: var(--text);
   color-scheme: dark;
   font-family: 'Segoe UI Variable Text', 'Segoe UI', system-ui, sans-serif;
+  line-height: 1.55;
+  text-rendering: optimizeLegibility;
   overflow: hidden;
 }
 
@@ -184,6 +191,13 @@ input[type='checkbox']:disabled {
 @media (prefers-reduced-motion: no-preference) {
   .page-in {
     animation: page-in 0.22s ease-out;
+  }
+}
+
+@keyframes launch-pop {
+  from {
+    opacity: 0;
+    transform: scale(0.92) translateY(10px);
   }
 }
 

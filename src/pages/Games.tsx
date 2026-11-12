@@ -26,6 +26,40 @@ const ART: Record<string, { src: string; kind: 'cover' } | { src: string; kind: 
   roblox: { src: robloxLogo, kind: 'logo', bg: 'from-[#1f2937] to-[#3f4b5c]', invert: true },
 };
 
+/** Full-window launch card: the game's art, a spinner while it starts, a check once its process is running. */
+function Launching({ id, name, icon, phase, onClose }: { id: string; name: string; icon?: string | null; phase: 'starting' | 'running'; onClose: () => void }) {
+  const running = phase === 'running';
+  return (
+    <div role="status" aria-live="polite" className="fixed inset-0 z-50 grid place-items-center bg-black/70 backdrop-blur-sm animate-[fadein_.2s_ease-out]" onClick={onClose}>
+      <div className="w-[min(30rem,calc(100vw-2rem))] overflow-hidden rounded-2xl bg-[var(--panel)] shadow-2xl ring-1 ring-[var(--line)] animate-[launch-pop_.35s_cubic-bezier(.2,.9,.3,1.2)]" onClick={(e) => e.stopPropagation()}>
+        <div className="relative">
+          {ART[id] ? <GameArt id={id} name={name} large /> : <div className="grid h-40 place-items-center bg-gradient-to-br from-sky-900/60 to-slate-900">{icon ? <img src={icon} alt="" className="h-16 w-16" /> : <span className="text-3xl font-bold text-slate-200">{name.slice(0, 2)}</span>}</div>}
+          <div className="absolute inset-0 bg-gradient-to-t from-[var(--panel)] via-transparent to-transparent" />
+          {!running && <div className="absolute inset-x-0 bottom-0 h-1 overflow-hidden bg-white/10"><div className="h-full w-1/3 animate-[slide_1.2s_ease-in-out_infinite] bg-sky-400" /></div>}
+        </div>
+        <div className="flex items-center gap-4 p-5">
+          <div className="relative grid h-12 w-12 shrink-0 place-items-center">
+            {running ? (
+              <span className="grid h-12 w-12 place-items-center rounded-full bg-emerald-500/20 text-2xl text-emerald-300 ring-2 ring-emerald-400/60 animate-[check-pop_.4s_ease-out]">✓</span>
+            ) : (
+              <>
+                <span className="absolute inset-0 rounded-full border-4 border-sky-500/20" />
+                <span className="absolute inset-0 animate-spin rounded-full border-4 border-transparent border-t-sky-400" />
+                <span className="text-lg text-sky-300">▶</span>
+              </>
+            )}
+          </div>
+          <div className="min-w-0 flex-1">
+            <div className="truncate text-lg font-semibold text-slate-50">{running ? `${name} is running` : `Starting ${name}…`}</div>
+            <p className="text-sm text-slate-400">{running ? 'Good luck, have fun.' : 'Opening through its launcher. If it asks you to sign in or update, finish that there.'}</p>
+          </div>
+          <Button onClick={onClose}>{running ? 'Close' : 'Hide'}</Button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 /** Resolutions competitive players use. 4:3 / 16:10 on a 16:9 screen = "stretched" when the GPU scales to full screen. */
 const RES_PRESETS: Array<{ w: number; h: number; tag: string }> = [
   { w: 1920, h: 1080, tag: '16:9' },
@@ -168,7 +202,7 @@ function GameBoost({ busy, act }: { busy: boolean; act: Act }) {
               <Badge className="bg-sky-500/15 text-sky-300 ring-sky-500/30">Watching</Badge>
             ) : null}
           </div>
-          <p className="text-sm text-slate-400">When a game from this list starts, apply the options below; undo them all when it closes. Each game can have its own. Works while IcyCleaner is open or in the tray.</p>
+          <p className="text-sm text-slate-400">When a game from this list starts, apply the options below; undo them all when it closes. Each game can have its own. Works while IcyTweaker is open or in the tray.</p>
           {b.active && (
             <p className="text-xs text-emerald-300">
               {b.active.plan ? `Power plan: ${b.active.plan}. ` : ''}
@@ -494,7 +528,7 @@ function Compare({ now, before }: { now: FrametimeResult; before: FrametimeResul
   );
 }
 
-function Editor({ g, icon, busy, act, ask, reload }: { g: GameView; icon?: string | null; busy: boolean; act: Act; ask: Ask; reload: () => Promise<void> }) {
+function Editor({ g, icon, busy, act, ask, reload, onPlay }: { g: GameView; icon?: string | null; busy: boolean; act: Act; ask: Ask; reload: () => Promise<void>; onPlay: () => void }) {
   const [v, setV] = useState<GameValues>(g.current);
   const [recommended, setRecommended] = useState(false);
   const editable = g.status === 'not-optimized' || g.status === 'optimized';
@@ -590,7 +624,7 @@ function Editor({ g, icon, busy, act, ask, reload }: { g: GameView; icon?: strin
                   ⚡ Competitive setup
                 </Button>
               )}
-            <Button primary disabled={busy} onClick={() => act(() => window.api.launchGame(g.id))}>
+            <Button primary disabled={busy} onClick={() => onPlay()}>
               ▶ Play
             </Button>
             </div>
@@ -757,7 +791,7 @@ function WinSettings({ target, busy, act }: { target: string; busy: boolean; act
 }
 
 /** A library game without a profile: play it, set its Windows settings. */
-function LibraryPanel({ g, icon, busy, act }: { g: LibraryGame; icon?: string | null; busy: boolean; act: Act }) {
+function LibraryPanel({ g, icon, busy, act, onPlay }: { g: LibraryGame; icon?: string | null; busy: boolean; act: Act; onPlay: () => void }) {
   return (
     <div className="space-y-3 rounded-xl bg-[var(--card)] p-4 ring-1 ring-[var(--line)]">
       <div className="flex items-start justify-between gap-3">
@@ -768,7 +802,7 @@ function LibraryPanel({ g, icon, busy, act }: { g: LibraryGame; icon?: string | 
             <p className="text-xs text-slate-500">{g.source === 'steam' ? 'Steam' : 'Epic Games'} · no settings profile (Game Boost, Play and Windows settings work)</p>
           </div>
         </div>
-        <Button primary disabled={busy} onClick={() => act(() => window.api.launchLibraryGame(g.id))}>
+        <Button primary disabled={busy} onClick={() => onPlay()}>
           ▶ Play
         </Button>
       </div>
@@ -851,7 +885,7 @@ function SensConverter() {
   );
 }
 
-/** Average FPS in Game Boost sessions before vs after IcyCleaner first optimized each game (needs the overlay in both). */
+/** Average FPS in Game Boost sessions before vs after IcyTweaker first optimized each game (needs the overlay in both). */
 function BeforeAfter({ list, games }: { list: SessionReport[]; games: GameView[] }) {
   const rows = games.flatMap((g) => {
     if (!g.optimizedAt) return [];
@@ -955,6 +989,30 @@ export function Games({ busy, act, ask }: { busy: boolean; act: Act; ask: Ask })
   useEffect(() => void window.api.gameIcons().then(setIcons), []);
   useEffect(() => void load(), [load]);
   const [tab, setTab] = useState<'profiles' | 'boost' | 'performance'>('profiles');
+  const [launching, setLaunching] = useState<{ id: string; name: string; at: number; profile: boolean; phase: 'starting' | 'running' } | null>(null);
+  // Running games: re-check every 4 s while one runs or is starting, so a closed game unlocks its profile by itself.
+  const anyRunning = !!games?.some((g) => g.running);
+  useEffect(() => {
+    if (!anyRunning && !launching) return;
+    const t = setInterval(() => void (document.hidden ? undefined : load()), 4000);
+    return () => clearInterval(t);
+  }, [anyRunning, launching, load]);
+  useEffect(() => {
+    if (!launching || launching.phase !== 'starting') return;
+    if (launching.profile && games?.find((g) => g.id === launching.id)?.running) setLaunching({ ...launching, phase: 'running' });
+  }, [games, launching]);
+  useEffect(() => {
+    if (!launching) return;
+    // Running: show it briefly. Library games aren't tracked, and a launcher may sit at a login: let go after a while.
+    const ms = launching.phase === 'running' ? 2500 : launching.profile ? 90_000 : 8000;
+    const t = setTimeout(() => setLaunching(null), ms);
+    return () => clearTimeout(t);
+  }, [launching]);
+  async function startGame(id: string, name: string, profile: boolean) {
+    const r = await (profile ? window.api.launchGame(id) : window.api.launchLibraryGame(id));
+    if (r.ok) setLaunching({ id, name, at: Date.now(), profile, phase: 'starting' });
+    else await act(async () => r);
+  }
   const [library, setLibrary] = useState<LibraryGame[]>([]);
   const [libIcons, setLibIcons] = useState<Record<string, string | null>>({});
   const loadLibrary = useCallback(async (refresh = false) => {
@@ -999,6 +1057,15 @@ export function Games({ busy, act, ask }: { busy: boolean; act: Act; ask: Ask })
           Edits each game's own settings file, only the keys shown. Anti-cheat files are never touched. The game must be closed.
         </p>
       </div>
+      {launching && (
+        <Launching
+          id={launching.id}
+          name={launching.name}
+          icon={launching.profile ? icons[launching.id] : libIcons[launching.id]}
+          phase={launching.phase}
+          onClose={() => setLaunching(null)}
+        />
+      )}
       <Tabs
         tabs={[
           { id: 'profiles', label: 'Profiles', icon: 'gamepad' },
@@ -1060,7 +1127,7 @@ export function Games({ busy, act, ask }: { busy: boolean; act: Act; ask: Ask })
                   {g.status !== 'not-installed' && !g.running && (
                     <button
                       disabled={busy}
-                      onClick={() => act(() => window.api.launchGame(g.id))}
+                      onClick={() => void startGame(g.id, g.name, true)}
                       aria-label={`Play ${g.name}`}
                       title={`Play ${g.name}`}
                       className="px-1.5 text-sm text-slate-500 hover:text-sky-300 disabled:opacity-40"
@@ -1096,7 +1163,7 @@ export function Games({ busy, act, ask }: { busy: boolean; act: Act; ask: Ask })
                     </button>
                     <button
                       disabled={busy}
-                      onClick={() => act(() => window.api.launchLibraryGame(g.id))}
+                      onClick={() => void startGame(g.id, g.name, false)}
                       aria-label={`Play ${g.name}`}
                       title={`Play ${g.name}`}
                       className="px-2 text-sm text-slate-500 hover:text-sky-300 disabled:opacity-40"
@@ -1111,8 +1178,19 @@ export function Games({ busy, act, ask }: { busy: boolean; act: Act; ask: Ask })
         </div>
         {/* Sticky: the chosen game's settings stay in view however far down the list it was picked. */}
         <div className="min-w-0 md:sticky md:top-2 md:max-h-[calc(100vh-5rem)] md:self-start md:overflow-y-auto md:pr-1">
-          {libSelected && <LibraryPanel key={libSelected.id} g={libSelected} icon={libIcons[libSelected.id]} busy={busy} act={act} />}
-          {current && <Editor key={`${current.id}:${JSON.stringify(current.current)}`} g={current} icon={icons[current.id]} busy={busy} act={act} ask={ask} reload={load} />}
+          {libSelected && <LibraryPanel key={libSelected.id} g={libSelected} icon={libIcons[libSelected.id]} busy={busy} act={act} onPlay={() => void startGame(libSelected.id, libSelected.name, false)} />}
+          {current && (
+            <Editor
+              key={`${current.id}:${JSON.stringify(current.current)}`}
+              g={current}
+              icon={icons[current.id]}
+              busy={busy}
+              act={act}
+              ask={ask}
+              reload={load}
+              onPlay={() => void startGame(current.id, current.name, true)}
+            />
+          )}
         </div>
       </div>
     </section>

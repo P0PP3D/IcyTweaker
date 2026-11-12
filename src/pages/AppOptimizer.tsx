@@ -90,13 +90,13 @@ function StartupItems({ busy, act }: { busy: boolean; act: Act }) {
                   <span className="text-sm font-medium text-slate-100">{i.name}</span>
                   {i.requiresAdmin && <Badge className="bg-violet-500/15 text-violet-300 ring-violet-500/30">admin</Badge>}
                   {impact(i) !== null && (
-                    <span title="Windows recorded this app slowing your startup by this much" className="rounded-md bg-amber-500/10 px-1.5 text-[11px] font-medium text-amber-300 ring-1 ring-amber-500/30">
+                    <span title="Windows recorded this app slowing your startup by this much" className="rounded-md bg-amber-500/10 px-1.5 text-xs font-medium text-amber-300 ring-1 ring-amber-500/30">
                       +{sec(impact(i))} at startup
                     </span>
                   )}
-                  <span className="text-[11px] text-slate-500">{i.location}</span>
+                  <span className="text-xs text-slate-500">{i.location}</span>
                 </div>
-                <p className="truncate font-mono text-[11px] text-slate-500" title={i.command}>
+                <p className="truncate font-mono text-xs text-slate-500" title={i.command}>
                   {i.command}
                 </p>
               </div>

@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import clsx from 'clsx';
-import type { AppSettings, Progress, UpdateInfo } from '../../shared/types';
+import type { AppSettings, AppState, Progress, UpdateInfo } from '../../shared/types';
 import { Icon } from '../icons';
 import { Button, FeatureCard, RISK_STYLE, Badge, Toggle, type Ask } from '../ui';
 import type { Act } from './General';
@@ -13,13 +13,13 @@ function Switch({ on, label, onChange, disabled }: { on: boolean; label: string;
 }
 
 const ROWS: Array<{ key: 'tray' | 'notify' | 'startWithWindows' | 'weeklyClean' | 'overlayWithBoost' | 'hotkeys' | 'autoUpdate'; name: string; description: string }> = [
-  { key: 'autoUpdate', name: 'Automatic updates', description: 'Check GitHub for a new version every few hours, download it in the background and install it when you quit IcyCleaner. Off: only when you press the buttons under Updates.' },
-  { key: 'tray', name: 'Keep running in the tray', description: 'Closing the window keeps IcyCleaner in the system tray, so Game Boost and scheduled cleaning keep working. Quit from the tray icon.' },
+  { key: 'autoUpdate', name: 'Automatic updates', description: 'Check GitHub for a new version every few hours, download it in the background and install it when you quit IcyTweaker. Off: only when you press the buttons under Updates.' },
+  { key: 'tray', name: 'Keep running in the tray', description: 'Closing the window keeps IcyTweaker in the system tray, so Game Boost and scheduled cleaning keep working. Quit from the tray icon.' },
   { key: 'notify', name: 'Notifications', description: 'Tell me when Game Boost starts and ends, and when the weekly Health Check has run.' },
-  { key: 'startWithWindows', name: 'Start with Windows', description: 'Start IcyCleaner in the tray when you sign in (as administrator, through a scheduled task, without a prompt).' },
+  { key: 'startWithWindows', name: 'Start with Windows', description: 'Start IcyTweaker in the tray when you sign in (as administrator, through a scheduled task, without a prompt).' },
   { key: 'overlayWithBoost', name: 'Overlay during Game Boost', description: 'Show the in-game overlay (FPS, 1% low, GPU temperature) automatically while Game Boost runs a game. Needs administrator.' },
-  { key: 'hotkeys', name: 'Global hotkeys', description: 'Ctrl+Shift+O shows or hides the overlay for the game you are playing; Ctrl+Shift+B turns Game Boost on or off. They work while IcyCleaner runs, even in the tray.' },
-  { key: 'weeklyClean', name: 'Weekly Health Check', description: 'Once a week, when the PC has been idle for 10 minutes, clean the safe Health Check items. Runs while IcyCleaner is open or in the tray.' },
+  { key: 'hotkeys', name: 'Global hotkeys', description: 'Ctrl+Shift+O shows or hides the overlay for the game you are playing; Ctrl+Shift+B turns Game Boost on or off. They work while IcyTweaker runs, even in the tray.' },
+  { key: 'weeklyClean', name: 'Weekly Health Check', description: 'Once a week, when the PC has been idle for 10 minutes, clean the safe Health Check items. Runs while IcyTweaker is open or in the tray.' },
 ];
 
 function Updates({ busy, act }: { busy: boolean; act: Act }) {
@@ -31,7 +31,7 @@ function Updates({ busy, act }: { busy: boolean; act: Act }) {
     <FeatureCard
       icon="download"
       title="Updates"
-      subtitle={u ? `This is version ${u.current}` : 'Check for a newer IcyCleaner'}
+      subtitle={u ? `This is version ${u.current}` : 'Check for a newer IcyTweaker'}
       footer={
         <>
           {u?.downloaded ? (
@@ -74,7 +74,7 @@ function Updates({ busy, act }: { busy: boolean; act: Act }) {
       }
     >
       {!u ? (
-        <p>Checks the project's GitHub releases. In the installed app, a newer version can be downloaded and installed from here; nothing happens without your click.</p>
+        <p>With Automatic updates on (above), new versions download by themselves and install when you quit. You can also check now.</p>
       ) : !u.configured ? (
         <p className="text-amber-300">No release page is set up for this build yet (package.json "updateRepo").</p>
       ) : u.error ? (
@@ -88,7 +88,7 @@ function Updates({ busy, act }: { busy: boolean; act: Act }) {
   );
 }
 
-export function Settings({ busy, act, ask }: { busy: boolean; act: Act; ask: Ask }) {
+export function Settings({ state, busy, act, ask }: { state: AppState; busy: boolean; act: Act; ask: Ask }) {
   const [s, setS] = useState<AppSettings | null>(null);
   useEffect(() => void window.api.getSettings().then(setS), []);
   const save = async (patch: Partial<AppSettings>) => {
@@ -123,7 +123,7 @@ export function Settings({ busy, act, ask }: { busy: boolean; act: Act; ask: Ask
     <section className="space-y-4">
       <div>
         <h2 className="text-xl font-semibold text-slate-100">Settings</h2>
-        <p className="text-sm text-slate-400">How IcyCleaner runs, and moving your setup to another PC.</p>
+        <p className="text-sm text-slate-400">How IcyTweaker runs, and moving your setup to another PC.</p>
       </div>
       <ul className="space-y-2">
         {ROWS.map((r) => (
@@ -192,12 +192,27 @@ export function Settings({ busy, act, ask }: { busy: boolean; act: Act; ask: Ask
           </>
         }
       >
-        <p>Save everything you've applied to a small file, or copy it as a share code to paste in Discord. Importing shows the list first and only applies tweaks this version of IcyCleaner knows.</p>
+        <p>Save everything you've applied to a small file, or copy it as a share code to paste in Discord. Importing shows the list first and only applies tweaks this version of IcyTweaker knows.</p>
         <p className="text-xs text-slate-500">
           Risky tweaks in a file need you to type IMPORT. <Badge className={RISK_STYLE.risky}>risky</Badge>
         </p>
       </FeatureCard>
       <Updates busy={busy} act={act} />
+      <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-[var(--line)] bg-[var(--card)] px-4 py-3">
+        <div>
+          <div className="flex items-center gap-2 font-medium text-slate-100">
+            <span className={clsx('h-2.5 w-2.5 rounded-full', state.live ? 'bg-rose-400' : 'bg-sky-400')} />
+            {state.live ? 'Live mode' : 'Dry-run mode'}
+          </div>
+          <p className="text-sm text-slate-400">
+            {state.live ? 'Changes are written to Windows. Every original value is backed up first.' : 'Changes are only simulated; nothing is written to Windows.'} {state.backupCount} setting(s) changed so far.
+          </p>
+        </div>
+        <Button danger disabled={busy || state.backupCount === 0} onClick={() => act(() => window.api.undoAll())}>
+          <Icon name="undo" className="h-4 w-4" />
+          Undo all changes ({state.backupCount})
+        </Button>
+      </div>
     </section>
   );
 }

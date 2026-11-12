@@ -183,7 +183,7 @@ export async function createSafety(adapter: SystemAdapter, dataDir: string, { re
   /** Restart Windows in 5 seconds. Dry-run only logs it. */
   async function restart() {
     try {
-      await adapter.exec(SHUTDOWN_EXE, ['/r', '/t', '5', '/c', 'IcyCleaner: restarting to finish applying tweaks']);
+      await adapter.exec(SHUTDOWN_EXE, ['/r', '/t', '5', '/c', 'IcyTweaker: restarting to finish applying tweaks']);
       await log('restart', 'windows', true, adapter.live ? undefined : 'dry-run: not restarted');
       hooks.activity('restart', true);
     } catch (err) {

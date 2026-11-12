@@ -50,7 +50,7 @@ export function createOverlayFeed(o: { systemRoot: string; send: (s: OverlayStat
     start(presentMon: string, exe: string, name: string, lhmDir?: string | null) {
       stop();
       game = name;
-      pm = spawn(presentMon, ['--process_name', exe, '--output_stdout', '--v1_metrics', '--no_console_stats', '--stop_existing_session', '--session_name', 'IcyCleanerOverlay'], { windowsHide: true });
+      pm = spawn(presentMon, ['--process_name', exe, '--output_stdout', '--v1_metrics', '--no_console_stats', '--stop_existing_session', '--session_name', 'IcyTweakerOverlay'], { windowsHide: true });
       let col = -1;
       let partial = '';
       pm.stdout?.on('data', (buf: Buffer) => {

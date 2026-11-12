@@ -68,7 +68,7 @@ export const parseLists = (out: string) => {
 /** Read-only: current free and standby MB. */
 export async function memoryLists(adapter: SystemAdapter) {
   const out = await adapter.query(POWERSHELL_EXE, script(LISTS), 30_000).catch((e: Error) => {
-    throw new Error(/Needs administrator/.test(e.message) ? 'Needs administrator: relaunch IcyCleaner as admin.' : 'Could not read the memory lists.');
+    throw new Error(/Needs administrator/.test(e.message) ? 'Needs administrator: relaunch IcyTweaker as admin.' : 'Could not read the memory lists.');
   });
   const r = parseLists(out);
   if (!r) throw new Error('Could not read the memory lists.');

@@ -65,9 +65,9 @@ export function frametimeStats(process: string, seconds: number, ms: number[]): 
 export async function captureFrametimes(adapter: SystemAdapter, exe: string, process: string, seconds: number, csvPath: string): Promise<FrametimeResult> {
   await adapter.query(
     exe,
-    ['--process_name', process, '--output_file', csvPath, '--timed', String(seconds), '--terminate_after_timed', '--stop_existing_session', '--no_console_stats', '--v1_metrics', '--session_name', 'IcyCleanerCapture'],
+    ['--process_name', process, '--output_file', csvPath, '--timed', String(seconds), '--terminate_after_timed', '--stop_existing_session', '--no_console_stats', '--v1_metrics', '--session_name', 'IcyTweakerCapture'],
     (seconds + 30) * 1000,
   );
-  if (!existsSync(csvPath)) throw new Error('PresentMon wrote no output. Run IcyCleaner as administrator and try again.');
+  if (!existsSync(csvPath)) throw new Error('PresentMon wrote no output. Run IcyTweaker as administrator and try again.');
   return frametimeStats(process, seconds, parseFrametimes(await readFile(csvPath, 'utf8')));
 }

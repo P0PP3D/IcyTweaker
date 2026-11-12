@@ -21,7 +21,7 @@ function Treemap({ entries, onOpen }: { entries: DirEntry[]; onOpen: (e: DirEntr
             key={e.path}
             title={`${e.name} · ${formatBytes(e.size)}`}
             onClick={() => onOpen(e)}
-            className={clsx('absolute overflow-hidden border border-black/40 p-1 text-left text-[11px] leading-tight text-white', COLORS[i % COLORS.length], e.isDir ? 'hover:brightness-125' : 'cursor-default opacity-70')}
+            className={clsx('absolute overflow-hidden border border-black/40 p-1 text-left text-xs leading-tight text-white', COLORS[i % COLORS.length], e.isDir ? 'hover:brightness-125' : 'cursor-default opacity-70')}
             style={{ left: `${(100 * r.x) / W}%`, top: `${(100 * r.y) / H}%`, width: `${(100 * r.w) / W}%`, height: `${(100 * r.h) / H}%` }}
           >
             {r.w > 60 && r.h > 24 && (

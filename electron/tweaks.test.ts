@@ -465,12 +465,12 @@ describe('adapter, restart and stats', () => {
 
   it('dry-run writes stay in memory', async () => {
     const dry = createSystemAdapter({});
-    const ref: SettingRef = { kind: 'reg', hive: 'HKCU', key: 'Software\\IcyCleanerTest', name: 'X' };
+    const ref: SettingRef = { kind: 'reg', hive: 'HKCU', key: 'Software\\IcyTweakerTest', name: 'X' };
     await dry.write(ref, dword(1));
     expect(await dry.read(ref)).toEqual(dword(1));
     await dry.write(ref, null);
     expect(await dry.read(ref)).toBeNull();
-    const task: SettingRef = { kind: 'task', path: '\\IcyCleanerTest' };
+    const task: SettingRef = { kind: 'task', path: '\\IcyTweakerTest' };
     await dry.write(task, 'disabled');
     expect(await dry.read(task)).toBe('disabled');
   });

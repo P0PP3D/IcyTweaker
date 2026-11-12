@@ -1,4 +1,4 @@
-// Line icons drawn for IcyCleaner (24x24, stroke = currentColor).
+// Line icons drawn for IcyTweaker (24x24, stroke = currentColor).
 import type { ReactNode } from 'react';
 
 const paths = {

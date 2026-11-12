@@ -48,10 +48,10 @@ export const generalTweaks: Tweak[] = [
       name: 'Core Power Plan',
       category: 'performance',
       description:
-        'Creates and activates an "IcyCleaner Core" power plan, copied from Balanced. When plugged in, the CPU stays at full speed, drives never spin down and PCIe link power saving is off. Battery settings are unchanged.',
+        'Creates and activates an "IcyTweaker Core" power plan, copied from Balanced. When plugged in, the CPU stays at full speed, drives never spin down and PCIe link power saving is off. Battery settings are unchanged.',
     }),
     [
-      { ref: { kind: 'scheme', guid: CORE_PLAN, base: BALANCED, name: 'IcyCleaner Core' }, on: true, off: null },
+      { ref: { kind: 'scheme', guid: CORE_PLAN, base: BALANCED, name: 'IcyTweaker Core' }, on: true, off: null },
       power(CORE_PLAN, 'SUB_PROCESSOR', 'PROCTHROTTLEMIN', true, 100, null),
       power(CORE_PLAN, 'SUB_PROCESSOR', 'PROCTHROTTLEMAX', true, 100, null),
       power(CORE_PLAN, 'SUB_DISK', 'DISKIDLE', true, 0, null),
@@ -640,7 +640,7 @@ export const generalTweaks: Tweak[] = [
       id: 'frequent-restore-points',
       name: 'Allow Frequent Restore Points',
       category: 'system',
-      description: 'Windows normally makes at most one restore point per 24 hours, so IcyCleaner\'s automatic ones can be skipped. This lets every major change get its own.',
+      description: 'Windows normally makes at most one restore point per 24 hours, so IcyTweaker\'s automatic ones can be skipped. This lets every major change get its own.',
     }),
     { hive: 'HKLM', key: 'SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion\\SystemRestore', name: 'SystemRestorePointCreationFrequency', enabled: 0, defaultValue: null },
   ),

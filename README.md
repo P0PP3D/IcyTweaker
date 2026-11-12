@@ -1,10 +1,10 @@
-# IcyTweaker (IcyCleaner)
+# IcyTweaker
 
 A Windows 10/11 optimizer for gamers: tweaks, cleaning, Game Boost and per-game settings, with an undo for everything.
 
 ## Download
 
-Get `IcyCleaner-Setup-x.y.z.exe` from [Releases](https://github.com/P0PP3D/IcyTweaker/releases/latest) and run it.
+Get `IcyTweaker-Setup-x.y.z.exe` from [Releases](https://github.com/P0PP3D/IcyTweaker/releases/latest) and run it.
 
 - **"Windows protected your PC"**: the installer isn't code-signed yet. Click **More info**, then **Run anyway**.
 - It asks for **administrator** at every start (UAC). Most tweaks need it.

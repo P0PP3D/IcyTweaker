@@ -1,4 +1,4 @@
-# IcyCleaner: rules for every session
+# IcyTweaker (formerly IcyCleaner): rules for every session
 
 Windows 10/11 optimizer for gamers (tweaker + cleaner). Stack is locked: Electron, React, TypeScript, Vite, Tailwind.
 Full spec: `docs/SPEC.md`. Work one phase of its "Build order" at a time.
@@ -12,7 +12,7 @@ Full spec: `docs/SPEC.md`. Work one phase of its "Build order" at a time.
 3. **Dry-run is the default in development.** `npm run dev` / `electron .` is live only with `OPTIMIZER_LIVE=1`.
    Installed (packaged) builds are live by default (user decision); `OPTIMIZER_LIVE=0` forces them to dry-run.
    Never set OPTIMIZER_LIVE=1 yourself, never run a real registry write, service change, powercfg or PowerShell
-   write on this machine, and **never start `release/win-unpacked/IcyCleaner.exe` here without OPTIMIZER_LIVE=0**.
+   write on this machine, and **never start `release/win-unpacked/IcyTweaker.exe` here without OPTIMIZER_LIVE=0**.
    Tests and dev use dry-run or the fake adapter. Stop and ask before enabling live mode.
 4. **Every system write goes through `SystemAdapter`** (`electron/system/adapter.ts`), and every tweak writes through the
    safety layer (`ctx.set` / `ctx.restore`), which backs up the original value (or "absent") before the first change.
@@ -133,7 +133,7 @@ Full spec: `docs/SPEC.md`. Work one phase of its "Build order" at a time.
 - Installed builds always run as administrator (`build.win.requestedExecutionLevel: requireAdministrator`, a UAC
   prompt at each start). Windows won't start such an app from Run/RunOnce, so "Start with Windows" and the driver
   job's resume use elevated sign-in scheduled tasks (`system/tasks.ts`, `\IcyCleaner\Start`, `\IcyCleaner\DriverJob`).
-  Launching `release/win-unpacked/IcyCleaner.exe` on the dev PC now raises a UAC prompt: don't.
+  Launching `release/win-unpacked/IcyTweaker.exe` on the dev PC now raises a UAC prompt: don't.
 - `safety.undoSince(ts)`: restores settings first changed at/after ts (System Restore > Change history).
 - Never write TS/regex through shell heredocs: backslashes get eaten. Use the Write/Edit tools.
 - Revert without a backup never writes "absent" to a kind that can't be absent (power, task, service): no-op.
@@ -172,7 +172,14 @@ Full spec: `docs/SPEC.md`. Work one phase of its "Build order" at a time.
 - Cleaner safety: `finder.ts` `keptOut` (games, Program Files, AppData, Windows folders on any drive) is skipped by
   Duplicate Finder / Old Files; `cleaner.ts` `isTempDir` (user-temp only cleans a folder named Temp/Tmp).
 - Restore point / restart status: `safety.hooks.activity` -> progress task 'restore-point' / 'restart' -> App `Activity`.
-  Game launches from the elevated app go through `runas /trustlevel:0x20000` (unelevated; Riot Client needs it).
+  Game launches from the elevated app: a .lnk in the data dir (`launch\<id>.lnk`) opened by explorer.exe, so the game
+  starts unelevated like a double-click (an elevated Riot Client only shows itself). Games page polls every 4 s while a
+  game runs or is starting (profile unlocks when it closes) and shows the `Launching` card. Spinners/progress always
+  animate (no motion-safe): many users have Windows animations off (prefers-reduced-motion).
+- Renamed IcyCleaner -> IcyTweaker (productName, UI). Kept on purpose: data folder `%APPDATA%\IcyCleaner` (main pins
+  userData to it), appId `app.icycleaner.desktop`, task names `\IcyCleaner\Start|DriverJob`, config kind
+  `icycleaner-config`, theme localStorage key. Start task is re-pointed when the exe path changes (`settings.startCmd`).
+  Installed exe is now `IcyTweaker.exe` (release/win-unpacked/IcyTweaker.exe: same UAC rule).
 - Home `Checkups` (main `checkups`: shader cache total from the Cleaner's own targets, GPU `driverDate` from the
   hardware query). Games page tabs: Profiles / Game Boost & overlay / Performance (sessions + `BeforeAfter` from
   `GameView.optimizedAt`, frametimes, `SensConverter` yaw table). Editor "Competitive setup" = recommended values +

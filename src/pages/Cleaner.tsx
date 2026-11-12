@@ -251,3 +251,43 @@ export function CleanerPage({ group, state, busy, act, ask }: { group: Group; st
     </section>
   );
 }
+
+/** Recycle Bin: how much it holds on every drive, and one button to empty it (Windows' own Clear-RecycleBin). */
+export function RecycleBin({ busy, act, ask }: { busy: boolean; act: Act; ask: Ask }) {
+  const [scan, setScan] = useState<ScanResult | null>(null);
+  const load = useCallback(async () => setScan((await window.api.scanCleanTargets(['recycle-bin']))[0] ?? null), []);
+  useEffect(() => void load(), [load]);
+  const empty = scan !== null && scan.files === 0;
+  async function emptyBin() {
+    if (!(await ask('Empty the Recycle Bin?', `Permanently deletes everything in it (${formatBytes(scan!.bytes)}) on every drive. It can't be restored afterwards.`, 'Empty Recycle Bin'))) return;
+    await act(async () => (await window.api.cleanTargets(['recycle-bin'])).report);
+    await load();
+  }
+  return (
+    <section className="space-y-4">
+      <div>
+        <h2 className="text-xl font-semibold text-slate-100">Recycle Bin</h2>
+        <p className="text-sm text-slate-400">Files you deleted are kept here until you empty it. Emptying frees the space for good.</p>
+      </div>
+      <div className="flex flex-wrap items-center gap-6 rounded-xl bg-[var(--card)] p-6 ring-1 ring-[var(--line)]">
+        <div className="grid h-20 w-20 place-items-center rounded-2xl bg-sky-500/10 ring-1 ring-sky-500/30">
+          <svg viewBox="0 0 24 24" className="h-10 w-10 text-sky-300" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+            <path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13M10 11v6M14 11v6" />
+          </svg>
+        </div>
+        <div className="min-w-0 flex-1">
+          <div className="text-3xl font-semibold tabular-nums text-slate-50">{scan ? formatBytes(scan.bytes) : '…'}</div>
+          <div className="text-sm text-slate-400">{scan === null ? 'Measuring…' : empty ? 'The Recycle Bin is empty.' : 'In the Recycle Bin on all drives'}</div>
+        </div>
+        <div className="flex gap-2">
+          <Button disabled={busy} onClick={() => void load()}>
+            Refresh
+          </Button>
+          <Button danger disabled={busy || !scan || empty} onClick={() => void emptyBin()}>
+            Empty Recycle Bin
+          </Button>
+        </div>
+      </div>
+    </section>
+  );
+}

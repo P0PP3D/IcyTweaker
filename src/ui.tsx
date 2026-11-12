@@ -21,7 +21,7 @@ export const STATUS_TEXT: Record<TweakStatus, string> = {
 export type Ask = (title: string, body: string, confirmLabel?: string, typeToConfirm?: string) => Promise<boolean>;
 
 export function Badge({ className, children }: { className: string; children: ReactNode }) {
-  return <span className={clsx('whitespace-nowrap rounded px-1.5 py-0.5 text-[11px] font-medium uppercase tracking-wide ring-1', className)}>{children}</span>;
+  return <span className={clsx('whitespace-nowrap rounded px-1.5 py-0.5 text-xs font-medium uppercase tracking-wide ring-1', className)}>{children}</span>;
 }
 
 export const MUTED_BADGE = 'bg-slate-500/15 text-slate-300 ring-slate-500/30';
@@ -76,7 +76,7 @@ export function WarningChip({ text }: { text?: string }) {
       <button
         onClick={() => setOpen(!open)}
         aria-expanded={open}
-        className="rounded bg-amber-500/15 px-1.5 py-0.5 text-[11px] font-semibold uppercase tracking-wide text-amber-300 ring-1 ring-amber-500/30 hover:bg-amber-500/25"
+        className="rounded bg-amber-500/15 px-1.5 py-0.5 text-xs font-semibold uppercase tracking-wide text-amber-300 ring-1 ring-amber-500/30 hover:bg-amber-500/25"
       >
         1 warning
       </button>
@@ -134,7 +134,7 @@ export function TweakRow({
             </span>
           )}
           <WarningChip text={t.warning} />
-          {t.changedAt && <span className="text-[11px] text-slate-500">changed {new Date(t.changedAt).toLocaleDateString()}</span>}
+          {t.changedAt && <span className="text-xs text-slate-500">changed {new Date(t.changedAt).toLocaleDateString()}</span>}
         </div>
         {(t.unfit || t.anticheatWarning) && <p className="mt-1 text-xs text-orange-200/90">{[t.unfit, t.anticheatWarning].filter(Boolean).join(' ')}</p>}
         <p className="mt-1 text-sm text-slate-400">{t.description}</p>

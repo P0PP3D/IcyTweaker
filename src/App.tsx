@@ -12,7 +12,7 @@ import { General, appliedCount, tweakHandlers } from './pages/General';
 import { Home } from './pages/Home';
 import { Presets } from './pages/Presets';
 import { SystemRestore } from './pages/SystemRestore';
-import { CleanerPage, HealthCheck } from './pages/Cleaner';
+import { CleanerPage, HealthCheck, RecycleBin } from './pages/Cleaner';
 import { Analyzer } from './pages/Analyzer';
 import { DriveHealth } from './pages/DriveHealth';
 import { Services } from './pages/Services';
@@ -25,7 +25,7 @@ import { Icon, Logo, type IconName } from './icons';
 import { Banner, Button, ConfirmDialog, TweakRow, type Ask } from './ui';
 import { applyTheme } from './theme';
 
-const PAGES = ['home', 'general', 'debloater', 'fixes', 'presets', 'restore', 'services', 'network', 'resources', 'games', 'appopt', 'advanced', 'bios', 'health', 'smart', 'browsers', 'apps', 'analyzer', 'drives', 'duplicates', 'oldfiles', 'privacy', 'settings', 'devices', 'processes'] as const;
+const PAGES = ['home', 'general', 'debloater', 'fixes', 'presets', 'restore', 'services', 'network', 'resources', 'games', 'appopt', 'advanced', 'bios', 'health', 'smart', 'browsers', 'apps', 'analyzer', 'drives', 'duplicates', 'oldfiles', 'privacy', 'recycle', 'settings', 'devices', 'processes'] as const;
 type Page = (typeof PAGES)[number];
 type Confirm = { title: string; body: string; confirmLabel: string; typeToConfirm?: string; resolve: (ok: boolean) => void };
 /** Tweaks the Re-Enable Defender fix reverses. */
@@ -83,20 +83,21 @@ function Activity() {
   if (!task) return null;
   const rp = task === 'restore-point';
   return (
-    <div role="alertdialog" aria-live="assertive" aria-label={rp ? 'Creating a restore point' : 'Restarting Windows'} className="fixed inset-0 z-50 grid place-items-center bg-black/60 backdrop-blur-sm motion-safe:animate-[fadein_.2s_ease-out]">
+    <div role="alertdialog" aria-live="assertive" aria-label={rp ? 'Creating a restore point' : 'Restarting Windows'} className="fixed inset-0 z-50 grid place-items-center bg-black/60 backdrop-blur-sm animate-[fadein_.2s_ease-out]">
       <div className="w-[min(26rem,calc(100vw-2rem))] rounded-2xl bg-[var(--panel)] p-6 text-center shadow-2xl ring-1 ring-[var(--line)]">
         <div className="relative mx-auto mb-4 h-16 w-16">
           <div className="absolute inset-0 rounded-full border-4 border-sky-500/20" />
-          <div className="absolute inset-0 rounded-full border-4 border-transparent border-t-sky-400 motion-safe:animate-spin" />
+          {/* Always moves (no motion-safe): it's a progress signal, and many gaming PCs turn Windows animations off. */}
+          <div className="absolute inset-0 animate-spin rounded-full border-4 border-transparent border-t-sky-400" />
           <div className="absolute inset-0 grid place-items-center text-xl font-semibold text-sky-300">{rp ? '' : Math.max(left, 0)}</div>
         </div>
         <div className="text-lg font-semibold text-slate-100">{rp ? 'Creating a restore point…' : left > 0 ? `Restarting in ${left}…` : 'Restarting…'}</div>
         <p className="mt-1 text-sm text-slate-400">
-          {rp ? 'Windows is saving a snapshot of your system settings. This usually takes under a minute; please keep IcyCleaner open.' : 'Save your work now. Windows will close your apps and restart.'}
+          {rp ? 'Windows is saving a snapshot of your system settings. This usually takes under a minute; please keep IcyTweaker open.' : 'Save your work now. Windows will close your apps and restart.'}
         </p>
         {rp && (
           <div className="mt-4 h-1.5 overflow-hidden rounded-full bg-white/10">
-            <div className="h-full w-1/3 rounded-full bg-sky-400 motion-safe:animate-[slide_1.4s_ease-in-out_infinite]" />
+            <div className="h-full w-1/3 animate-[slide_1.4s_ease-in-out_infinite] rounded-full bg-sky-400" />
           </div>
         )}
       </div>
@@ -233,6 +234,7 @@ export function App() {
         { id: 'duplicates', label: 'Duplicate Finder', icon: 'layers' },
         { id: 'oldfiles', label: 'Old Files', icon: 'restore' },
         { id: 'privacy', label: 'Privacy Traces', icon: 'globe' },
+        { id: 'recycle', label: 'Recycle Bin', icon: 'trash' },
       ],
     },
   ];
@@ -252,7 +254,7 @@ export function App() {
             <Logo className="h-8 w-8 shrink-0" />
             {!collapsed && (
               <span className="truncate text-[15px] font-semibold tracking-tight text-slate-50">
-                Icy<span className="font-normal text-slate-400">Cleaner</span>
+                Icy<span className="font-normal text-slate-400">Tweaker</span>
               </span>
             )}
           </div>
@@ -303,7 +305,7 @@ export function App() {
                     >
                       <Icon name={n.icon} className={clsx('h-[18px] w-[18px] shrink-0', active ? 'text-sky-300' : 'text-slate-400')} />
                       {!collapsed && <span className="flex-1 truncate">{n.label}</span>}
-                      {!collapsed && n.count && <span className="rounded-md border border-[var(--line)] bg-white/[0.04] px-1.5 text-[11px] text-slate-400">{n.count}</span>}
+                      {!collapsed && n.count && <span className="rounded-md border border-[var(--line)] bg-white/[0.04] px-1.5 text-xs text-slate-400">{n.count}</span>}
                     </button>
                   );
                 })}
@@ -312,23 +314,6 @@ export function App() {
           ))}
         </nav>
 
-        <div className={clsx('m-3 mt-0 rounded-xl border border-[var(--line)] bg-white/[0.03] p-3', collapsed && 'hidden')}>
-          <div className="flex items-center justify-between text-xs">
-            <span className="flex items-center gap-2 font-medium text-slate-200">
-              <span className={clsx('h-2 w-2 rounded-full', state.live ? 'bg-rose-400' : 'bg-sky-400')} />
-              {state.live ? 'Live mode' : 'Dry-run mode'}
-            </span>
-            <span className="text-slate-500">Build {state.build}</span>
-          </div>
-          <button
-            disabled={busy || state.backupCount === 0}
-            onClick={() => act(() => window.api.undoAll())}
-            className="mt-2.5 flex w-full items-center justify-center gap-2 rounded-lg bg-white/[0.04] py-1.5 text-xs text-slate-300 ring-1 ring-white/10 transition hover:bg-white/[0.08] disabled:opacity-40"
-          >
-            <Icon name="undo" className="h-3.5 w-3.5" />
-            Undo all changes ({state.backupCount})
-          </button>
-        </div>
       </aside>
 
       <div className="flex min-w-0 flex-1 flex-col">
@@ -456,13 +441,15 @@ export function App() {
             ) : page === 'processes' ? (
               <Processes busy={busy} act={act} ask={ask} />
             ) : page === 'settings' ? (
-              <Settings busy={busy} act={act} ask={ask} />
+              <Settings state={state} busy={busy} act={act} ask={ask} />
             ) : page === 'duplicates' ? (
               <Duplicates busy={busy} act={act} ask={ask} />
             ) : page === 'oldfiles' ? (
               <OldFiles busy={busy} act={act} ask={ask} />
             ) : page === 'privacy' ? (
               <Privacy busy={busy} act={act} ask={ask} />
+            ) : page === 'recycle' ? (
+              <RecycleBin busy={busy} act={act} ask={ask} />
             ) : page === 'presets' ? (
               <Presets {...pageProps} />
             ) : (

@@ -39,7 +39,7 @@ function PollingTest() {
 }
 
 const TYPES: Array<{ id: AppSettings['deviceType']; name: string; icon: IconName; text: string }> = [
-  { id: 'auto', name: 'Automatic', icon: 'sparkles', text: 'Use what IcyCleaner detected.' },
+  { id: 'auto', name: 'Automatic', icon: 'sparkles', text: 'Use what IcyTweaker detected.' },
   { id: 'desktop', name: 'Desktop', icon: 'chip', text: 'All tweaks, including ones that trade power for speed.' },
   { id: 'laptop', name: 'Laptop', icon: 'bolt', text: 'Skips tweaks that cost battery and heat; battery-aware power plans.' },
 ];
@@ -65,7 +65,7 @@ export function Devices({ state, busy, act, ask }: { state: AppState; busy: bool
     <section className="space-y-4">
       <div>
         <h2 className="text-2xl font-semibold tracking-tight text-slate-50">Devices</h2>
-        <p className="text-sm text-slate-400">Tell IcyCleaner what kind of PC this is, and tune your mouse and keyboard.</p>
+        <p className="text-sm text-slate-400">Tell IcyTweaker what kind of PC this is, and tune your mouse and keyboard.</p>
       </div>
 
       <div className="grid gap-3 sm:grid-cols-3">

@@ -23,7 +23,7 @@ function DriverReinstall({ busy, act, ask, onJob }: { busy: boolean; act: Act; a
   async function begin() {
     const ok = await ask(
       'Reinstall the graphics driver?',
-      `1. Downloads NVIDIA driver ${info!.latest!.version} (${info!.latest!.size}) from NVIDIA and checks its signature.\n2. Installs Display Driver Uninstaller (DDU) if needed.\n3. DDU removes the current driver completely and restarts the PC. The screen may flicker and run at low resolution until the new driver is in.\n4. After you sign in, IcyCleaner opens: press Continue to install the new driver.\n\nA restore point is created first. Save your work: the PC restarts.`,
+      `1. Downloads NVIDIA driver ${info!.latest!.version} (${info!.latest!.size}) from NVIDIA and checks its signature.\n2. Installs Display Driver Uninstaller (DDU) if needed.\n3. DDU removes the current driver completely and restarts the PC. The screen may flicker and run at low resolution until the new driver is in.\n4. After you sign in, IcyTweaker opens: press Continue to install the new driver.\n\nA restore point is created first. Save your work: the PC restarts.`,
       'Begin',
       'REINSTALL',
     );

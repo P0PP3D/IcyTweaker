@@ -31,7 +31,7 @@ const CODE = 'ICY1.';
 export const toShareCode = (cfg: ConfigFile) => CODE + deflateRawSync(JSON.stringify(cfg)).toString('base64url');
 export function fromShareCode(code: string): string {
   const c = code.trim();
-  if (!c.startsWith(CODE)) throw new Error('The clipboard does not hold an IcyCleaner share code.');
+  if (!c.startsWith(CODE)) throw new Error('The clipboard does not hold an IcyTweaker share code.');
   try {
     return inflateRawSync(Buffer.from(c.slice(CODE.length), 'base64url'), { maxOutputLength: 1 << 20 }).toString('utf8');
   } catch {
@@ -48,7 +48,7 @@ export function parseConfig(text: string, known: TweakView[]): { config: ConfigF
     throw new Error('This file is not valid JSON.');
   }
   const r = raw as Partial<ConfigFile>;
-  if (r?.kind !== CONFIG_KIND || r.version !== 1 || !Array.isArray(r.tweaks)) throw new Error('This is not an IcyCleaner settings file.');
+  if (r?.kind !== CONFIG_KIND || r.version !== 1 || !Array.isArray(r.tweaks)) throw new Error('This is not an IcyTweaker settings file.');
   let skipped = 0;
   const seen = new Set<string>();
   const tweaks: ConfigFile['tweaks'] = [];

@@ -118,7 +118,7 @@ export function createDriverJob(o: {
           await o.backup();
         }
         job.step = 'cleaning';
-        job.message = `Removing the old driver with DDU; the PC restarts. After signing in, IcyCleaner opens: press Continue to install ${latest.version}.${dry}`;
+        job.message = `Removing the old driver with DDU; the PC restarts. After signing in, IcyTweaker opens: press Continue to install ${latest.version}.${dry}`;
         await save(job);
         await setLogonTask(o.adapter, DRIVER_TASK, o.resumeCommand); // elevated, at sign-in; removed after the install
         await o.log('driver-job', 'ddu', true, `${latest.version}${dry}`);

@@ -16,7 +16,7 @@ export function Overlay() {
   return (
     <div className="m-1 w-[220px] rounded-xl bg-black/65 px-3 py-2 font-mono text-[12px] leading-5 shadow-lg ring-1 ring-white/10">
       <div className="mb-0.5 flex items-center justify-between text-[10px] uppercase tracking-wider text-sky-300">
-        <span>IcyCleaner</span>
+        <span>IcyTweaker</span>
         <span className="truncate pl-2 text-slate-400">{s?.game ?? 'waiting…'}</span>
       </div>
       {row('FPS', s?.fps != null ? String(s.fps) : '—', fpsColor(s?.fps ?? null))}

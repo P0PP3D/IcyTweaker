@@ -1,6 +1,6 @@
 {
   "name": "icycleaner",
-  "productName": "IcyCleaner",
+  "productName": "IcyTweaker",
   "version": "0.1.2",
   "private": true,
   "description": "Windows 10/11 tweaker and cleaner for gamers",
@@ -30,7 +30,7 @@
   },
   "build": {
     "appId": "app.icycleaner.desktop",
-    "productName": "IcyCleaner",
+    "productName": "IcyTweaker",
     "directories": {
       "output": "release",
       "buildResources": "build"
@@ -53,10 +53,10 @@
       "allowToChangeInstallationDirectory": true,
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true,
-      "shortcutName": "IcyCleaner",
+      "shortcutName": "IcyTweaker",
       "include": "build/installer.nsh",
       "deleteAppDataOnUninstall": false,
-      "artifactName": "IcyCleaner-Setup-${version}.${ext}"
+      "artifactName": "IcyTweaker-Setup-${version}.${ext}"
     }
   },
   "updateRepo": "P0PP3D/IcyTweaker",

@@ -42,7 +42,7 @@ function Dns({ busy, act }: { busy: boolean; act: Act }) {
                   )}
                 >
                   <div>{p.name}</div>
-                  <div className="font-mono text-[11px] text-slate-400">{p.servers === 'dhcp' ? 'DHCP' : p.servers.replace(',', ', ')}</div>
+                  <div className="font-mono text-xs text-slate-400">{p.servers === 'dhcp' ? 'DHCP' : p.servers.replace(',', ', ')}</div>
                 </button>
               ))}
             </div>
