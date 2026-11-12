@@ -59,6 +59,7 @@ const ue = (section: string, fullscreenKeys: string[]) => {
     fps: { key: k('FrameRateLimit'), float: true },
     flags: {
       fullscreen: fullscreenKeys.map((n): Write => [k(n), '0']),
+      borderless: fullscreenKeys.map((n): Write => [k(n), '1']), // 1 = windowed fullscreen (borderless)
       vsyncOff: [[k('bUseVSync'), 'False']],
       dynResOff: [[k('bUseDynamicResolution'), 'False']],
       hdrOff: [[k('bUseHDRDisplayOutput'), 'False']],
@@ -138,6 +139,8 @@ export const gameProfiles: GameProfile[] = [
     flags: {
       // verify: exclusive fullscreen is fullscreen 1 + nowindowborder 0 (the file holds borderless: 0 / 1).
       fullscreen: [[dl('fullscreen'), '1'], [dl('nowindowborder'), '0']],
+      // Read from the dev PC's real video.txt, which is set to borderless: fullscreen 0 + nowindowborder 1.
+      borderless: [[dl('fullscreen'), '0'], [dl('nowindowborder'), '1']],
       vsyncOff: [[dl('mat_vsync'), '0']],
       aoOff: [[dl('r_citadel_ssao_quality'), '0'], [dl('r_citadel_distancefield_ao_quality'), '0']],
       bloomOff: [[dl('r_effects_bloom'), 'false'], [dl('r_post_bloom'), 'false']],

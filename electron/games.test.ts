@@ -7,6 +7,7 @@ import { NO_APPS, appTweaks } from './apps/apps';
 import { getKey, setKey } from './games/config';
 import { createGames, resolvePath, toWrites, validateValues, type GameEnv } from './games/games';
 import { gameProfiles, type GameProfile, type Key } from './games/profiles';
+import type { GameFlag } from '../shared/types';
 import { liveRead, memoryAdapter } from './system/adapter';
 import { createSafety } from './system/safety';
 import { createEngine } from './tweaks/engine';
@@ -58,6 +59,9 @@ describe('config files', () => {
 const ORIGINAL = '9'; // differs from every value a profile writes
 
 /** Writes a config file per profile file holding every key the profile can touch, set to ORIGINAL. */
+/** Every option a profile has, except borderless: it is the other display mode to fullscreen (same keys). */
+const allFlags = (p: GameProfile) => (Object.keys(p.flags) as GameFlag[]).filter((f) => f !== 'borderless') as never;
+
 async function fixture(p: GameProfile, drop?: string) {
   const root = path.join(TMP, String(n++));
   const env: GameEnv = { vars: { LOCALAPPDATA: root, USERPROFILE: root, APPDATA: root }, steamPath: path.join(root, 'steam'), programData: path.join(root, 'pd') };
@@ -104,7 +108,7 @@ async function setup(p: GameProfile, opts: { drop?: string; processes?: string }
 
 describe('game profile data', () => {
   it.each(gameProfiles)('$name: keys point at its files, recommended values are valid', (p) => {
-    const keys = [...toWrites(p, { flags: Object.keys(p.flags) as never }), ...(p.aa ?? []).flatMap((c) => c.set), ...(p.reflex ?? []).flatMap((c) => c.set)];
+    const keys = [...toWrites(p, { flags: allFlags(p) }), ...(p.aa ?? []).flatMap((c) => c.set), ...(p.reflex ?? []).flatMap((c) => c.set)];
     for (const [k] of keys) expect(Object.keys(p.files)).toContain(k.file);
     expect(validateValues(p, p.recommended)).toBeNull();
     expect(p.exe.every((e) => e === e.toLowerCase())).toBe(true);
@@ -133,7 +137,7 @@ describe.each(gameProfiles)('$name profile', (p) => {
     fps: p.fps ? 240 : undefined,
     aa: p.aa ? 0 : undefined,
     reflex: p.reflex ? p.reflex.length - 1 : undefined,
-    flags: Object.keys(p.flags) as never,
+    flags: allFlags(p),
   };
 
   it('apply backs up, patches only its keys, reads back; reset restores every original', async () => {

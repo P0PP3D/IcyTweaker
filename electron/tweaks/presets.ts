@@ -5,7 +5,7 @@ import { generalTweaks } from './general';
 
 const safe = generalTweaks.filter((t) => t.risk === 'safe').map((t) => t.id);
 
-const lowLatency = ['core-power-plan', 'win32-priority', 'raw-aim-curve', 'usb-power-guard', 'stickykeys-guard', 'do-solo-mode'];
+const lowLatency = ['core-power-plan', 'win32-priority', 'raw-aim-curve', 'usb-power-guard', 'stickykeys-guard', 'do-solo-mode', 'windowed-game-optimizations'];
 const debloat = [
   'silent-app-installs-off',
   'nudge-blocker',
@@ -20,6 +20,7 @@ const debloat = [
   'experimentation-lock',
   'troubleshooter-scans-off',
   'media-player-tracking-off',
+  'error-reporting-off',
 ];
 
 export const presets: PresetMeta[] = [
@@ -29,7 +30,7 @@ export const presets: PresetMeta[] = [
     name: 'Max FPS',
     description: 'Full CPU speed when plugged in, foreground priority for your game, and less background work competing with it.',
     action: 'apply',
-    tweakIds: ['core-power-plan', 'win32-priority', 'process-count-reduction', 'do-solo-mode', 'winsat-benchmark-off', 'stickykeys-guard'],
+    tweakIds: ['core-power-plan', 'win32-priority', 'process-count-reduction', 'do-solo-mode', 'winsat-benchmark-off', 'stickykeys-guard', 'power-throttling-off', 'fault-tolerant-heap-off', 'windowed-game-optimizations'],
   },
   {
     id: 'low-latency',

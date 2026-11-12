@@ -4,7 +4,7 @@
 //   - optionally pauses Windows Update (stops the service) and OneDrive, and starts them again after
 // Each game can have its own options (perGame); on battery the power plan is left alone.
 import type { BoostState } from '../../shared/types';
-import { POWERSHELL_EXE, SC_EXE, runningProcesses, type SettingRef } from '../system/adapter';
+import { POWERSHELL_EXE, SC_EXE, dword, runningProcesses, type SettingRef, type Value } from '../system/adapter';
 import type { Safety } from '../system/safety';
 import { purgeStandby } from '../system/memory';
 import type { DisplayMode } from '../../shared/types';
@@ -45,7 +45,13 @@ export interface BoostOptions {
   purgeStandby: boolean;
   /** Primary display mode during play, put back after (null = leave it). */
   display?: DisplayMode | null;
+  /** Do Not Disturb during play: notification banners off, your setting put back after. */
+  quietNotifications?: boolean;
 }
+
+/** Settings > System > Notifications, the main switch (absent = on). Read on the dev PC's key, 2026-11.
+ * verify: that Windows applies a change to it without signing out (the Settings app writes the same value). */
+const TOASTS: SettingRef = { kind: 'reg', hive: 'HKCU', key: 'Software\\Microsoft\\Windows\\CurrentVersion\\Notifications\\Settings', name: 'NOC_GLOBAL_SETTING_TOASTS_ENABLED' };
 export interface BoostSettings extends BoostOptions {
   enabled: boolean;
   /** Game id -> its own options. */
@@ -92,6 +98,7 @@ export function createBoost(
     updatesStopped: boolean;
     oneDrive: string | null;
     display: boolean;
+    quiet: { prev: Value | null } | null;
   } | null = null;
   let busy: Promise<void> = Promise.resolve();
   let ticks = 0;
@@ -132,7 +139,18 @@ export function createBoost(
     }
     let display = false;
     if (o.display) await setDisplayMode(safety.adapter, o.display).then(() => (display = true), () => {});
-    session = { game: game.name, since: new Date().toISOString(), prevScheme: plan ? prev : null, plan: plan?.name ?? null, lowered, updatesStopped, oneDrive, display };
+    // Through the safety layer, like the power plan: a crash mid-game is covered by Undo All.
+    let quiet: { prev: Value | null } | null = null;
+    if (o.quietNotifications) {
+      try {
+        const prev = await safety.read(TOASTS);
+        await safety.set(TOASTS, dword(0));
+        quiet = { prev };
+      } catch {
+        // notifications stay as they were
+      }
+    }
+    session = { game: game.name, since: new Date().toISOString(), prevScheme: plan ? prev : null, plan: plan?.name ?? null, lowered, updatesStopped, oneDrive, display, quiet };
     onEvent?.('start', game.name);
     const parts = [
       plan ? `plan ${plan.name}` : 'plan unchanged',
@@ -140,6 +158,7 @@ export function createBoost(
       updatesStopped ? 'Windows Update paused' : '',
       oneDrive ? 'OneDrive paused' : '',
       display ? `display ${o.display!.width}x${o.display!.height} ${o.display!.hz} Hz` : '',
+      quiet ? 'notifications silenced' : '',
     ];
     await safety.log('boost-start', game.name, true, `${parts.filter(Boolean).join('; ')}${safety.adapter.live ? '' : ' (dry-run)'}`);
   }
@@ -161,6 +180,7 @@ export function createBoost(
       await safety.adapter.exec(POWERSHELL_EXE, ['-NoProfile', '-NonInteractive', '-Command', `Start-Process ${psQuote(s.oneDrive)} '/background'`], 30_000).catch((e: Error) => errors.push(e.message));
     }
     if (s.display) await setDisplayMode(safety.adapter, null).catch((e: Error) => errors.push(e.message));
+    if (s.quiet) await safety.set(TOASTS, s.quiet.prev).catch((e: Error) => errors.push(e.message)); // drops the backup if it was the original
     await safety.log('boost-end', s.game, errors.length === 0, errors.join(' | ') || undefined);
   }
 
@@ -215,6 +235,7 @@ export function validateBoost(raw: unknown, gameIds: string[]): BoostSettings | 
       pauseOneDrive: o.pauseOneDrive === true,
       purgeStandby: o.purgeStandby === true,
       display: validMode(o.display),
+      quietNotifications: o.quietNotifications === true,
     };
   };
   const r = raw as Partial<BoostSettings> | null;

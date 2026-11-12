@@ -8,14 +8,16 @@ import { afterAll, describe, expect, it } from 'vitest';
 import { isTempDir } from './cleaner/cleaner';
 import { keptOut } from './cleaner/finder';
 import { getKey, setKey } from './games/config';
+import { toWrites, validateValues } from './games/games';
 import { createBoost, DEFAULT_BOOST, validateBoost } from './games/boost';
 import { gameProfiles } from './games/profiles';
 import { createSessionRecorder, DROP, isDrop } from './games/session';
-import { memoryAdapter } from './system/adapter';
+import { memoryAdapter, sz } from './system/adapter';
 import { buildConfig, fromShareCode, parseConfig, toShareCode } from './system/configfile';
 import { validMode } from './system/monitors';
 import { createSafety } from './system/safety';
 import { createEngine, tweak } from './tweaks/engine';
+import { generalTweaks } from './tweaks/general';
 import type { TweakView } from '../shared/types';
 
 const TMP = path.join(process.cwd(), '.test-tmp', 'extras');
@@ -158,6 +160,53 @@ describe('toggle status honesty', () => {
     const r = await engine.setTweak('tcp', false);
     expect(r.ok).toBe(false);
     expect(r.message).toMatch(/already set this way before IcyTweaker/);
+  });
+});
+
+describe('shared DirectX graphics value', () => {
+  it('windowed optimizations and Auto HDR share one value: turning one off keeps the other and the user\'s own parts', async () => {
+    const ref = { kind: 'reg' as const, hive: 'HKCU' as const, key: 'Software\\Microsoft\\DirectX\\UserGpuPreferences', name: 'DirectXUserGlobalSettings' };
+    const fake = memoryAdapter();
+    await fake.write(ref, sz('VRROptimizeEnable=0;'));
+    const safety = await createSafety(fake, dir());
+    const win = generalTweaks.find((t) => t.id === 'windowed-game-optimizations')!;
+    const hdr = generalTweaks.find((t) => t.id === 'auto-hdr-on')!;
+    await win.apply(safety);
+    await hdr.apply(safety);
+    expect(await fake.read(ref)).toEqual(sz('VRROptimizeEnable=0;SwapEffectUpgradeEnable=1;AutoHDREnable=1;'));
+    await win.revert(safety);
+    expect(await fake.read(ref)).toEqual(sz('VRROptimizeEnable=0;AutoHDREnable=1;'));
+    expect(await hdr.readState(safety)).toBe('applied');
+    expect(await win.readState(safety)).toBe('not_applied');
+    await hdr.revert(safety);
+    expect(await fake.read(ref)).toEqual(sz('VRROptimizeEnable=0;'));
+    expect(safety.backupCount()).toBe(0);
+  });
+});
+
+describe('borderless windowed and Do Not Disturb', () => {
+  it('borderless writes the windowed-fullscreen values, and fullscreen + borderless together is refused', () => {
+    const val = gameProfiles.find((g) => g.id === 'valorant')!;
+    expect(toWrites(val, { flags: ['borderless'] }).map(([k, v]) => `${k.name}=${v}`)).toEqual(['FullscreenMode=1', 'PreferredFullscreenMode=1', 'LastConfirmedFullscreenMode=1']);
+    const dl = gameProfiles.find((g) => g.id === 'deadlock')!;
+    expect(toWrites(dl, { flags: ['borderless'] }).map(([k, v]) => `${k.name}=${v}`)).toEqual(['setting.fullscreen=0', 'setting.nowindowborder=1']);
+    expect(validateValues(val, { flags: ['fullscreen', 'borderless'] })).toMatch(/not both/);
+    expect(validateValues(val, { flags: ['borderless'] })).toBeNull();
+  });
+  it('Game Boost silences notifications during play and puts the user\'s setting back after', async () => {
+    const procs = { value: '' };
+    const fake = memoryAdapter(undefined, async () => procs.value);
+    const ref = { kind: 'reg' as const, hive: 'HKCU' as const, key: 'Software\\Microsoft\\Windows\\CurrentVersion\\Notifications\\Settings', name: 'NOC_GLOBAL_SETTING_TOASTS_ENABLED' };
+    const safety = await createSafety(fake, dir());
+    const settings = validateBoost({ ...DEFAULT_BOOST, enabled: true, plan: false, lowerApps: [], quietNotifications: true }, [])!;
+    const boost = createBoost(safety, [{ id: 'g', name: 'G', exe: ['g.exe'] }], settings);
+    procs.value = '"g.exe","1","Console","1","1 K"\r\n';
+    await boost.tick();
+    expect(await fake.read(ref)).toEqual({ type: 'REG_DWORD', data: 0 });
+    procs.value = '';
+    await boost.tick();
+    expect(await fake.read(ref)).toBeNull(); // absent before = notifications on
+    expect(safety.backupCount()).toBe(0);
   });
 });
 

@@ -234,6 +234,8 @@ export interface BoostOptions {
   purgeStandby: boolean;
   /** Primary display mode during play, put back after. null / absent = leave it. */
   display?: DisplayMode | null;
+  /** Do Not Disturb during play (notification banners off, put back after). */
+  quietNotifications?: boolean;
 }
 export interface DisplayMode {
   width: number;
@@ -564,6 +566,7 @@ export type GameFlag =
   | 'bloomOff'
   | 'motionBlurOff'
   | 'noLetterbox'
+  | 'borderless'
   | 'dofOff';
 
 /** What a profile sets. Fields left out are not touched. aa / reflex = index into the game's choices. */

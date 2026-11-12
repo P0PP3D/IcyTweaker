@@ -117,7 +117,8 @@ function GameArt({ id, name, large }: { id: string; name: string; large?: boolea
 }
 
 const FLAG_LABEL: Record<GameFlag, string> = {
-  fullscreen: 'Enable Fullscreen',
+  fullscreen: 'Exclusive Fullscreen',
+  borderless: 'Borderless Windowed',
   vsyncOff: 'Disable V-Sync',
   dynResOff: 'Disable Dynamic Resolution',
   hdrOff: 'Disable HDR Output',
@@ -183,7 +184,7 @@ function GameBoost({ busy, act }: { busy: boolean; act: Act }) {
     scope === 'all' ? saveAll({ ...s, ...patch }) : saveAll({ ...s, perGame: { ...s.perGame, [scope]: { ...o, ...patch } } });
   const setCustom = (on: boolean) => {
     const perGame = { ...s.perGame };
-    if (on) perGame[scope] = { plan: s.plan, planGuid: s.planGuid, lowerApps: [...s.lowerApps], pauseUpdates: s.pauseUpdates, pauseOneDrive: s.pauseOneDrive, purgeStandby: s.purgeStandby, display: s.display ?? null };
+    if (on) perGame[scope] = { plan: s.plan, planGuid: s.planGuid, lowerApps: [...s.lowerApps], pauseUpdates: s.pauseUpdates, pauseOneDrive: s.pauseOneDrive, purgeStandby: s.purgeStandby, display: s.display ?? null, quietNotifications: !!s.quietNotifications };
     else delete perGame[scope];
     return saveAll({ ...s, perGame });
   };
@@ -264,6 +265,10 @@ function GameBoost({ busy, act }: { busy: boolean; act: Act }) {
           <label className="flex items-center gap-2" title="Every 30 s during play: when free memory is under 1 GB and standby memory over 1 GB, frees the standby list. Needs administrator.">
             <input type="checkbox" checked={o.purgeStandby} disabled={busy || !editable} onChange={(e) => edit({ purgeStandby: e.target.checked })} />
             Free standby memory when low
+          </label>
+          <label className="flex items-center gap-2" title="Turns notification banners off while the game runs and back on when it closes.">
+            <input type="checkbox" checked={!!o.quietNotifications} disabled={busy || !editable} onChange={(e) => edit({ quietNotifications: e.target.checked })} />
+            Do Not Disturb during play
           </label>
           <label className="flex items-center gap-2" title="Switches the main display to this mode while the game runs and back when it closes. Not saved: a sign-out also puts it back.">
             Display
@@ -535,7 +540,9 @@ function Editor({ g, icon, busy, act, ask, reload, onPlay }: { g: GameView; icon
     setV((x) => ({ ...x, ...patch }));
     setRecommended(false);
   };
-  const toggleFlag = (f: GameFlag, on: boolean) => set({ flags: on ? [...v.flags, f] : v.flags.filter((x) => x !== f) });
+  // Exclusive fullscreen and borderless are one display mode: picking one unticks the other.
+  const RIVAL: Partial<Record<GameFlag, GameFlag>> = { fullscreen: 'borderless', borderless: 'fullscreen' };
+  const toggleFlag = (f: GameFlag, on: boolean) => set({ flags: on ? [...v.flags.filter((x) => x !== RIVAL[f]), f] : v.flags.filter((x) => x !== f) });
   const num = (s: string) => (s.trim() === '' ? undefined : Number(s));
 
   async function apply() {

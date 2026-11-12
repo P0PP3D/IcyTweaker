@@ -21,6 +21,12 @@ export interface Setting {
   matches?: (cur: Value | null) => boolean;
   /** Bitmask settings: the value to write, given the current one. Default: `on`. */
   toOn?: (cur: Value | null) => Value;
+  /**
+   * Shared values (several tweaks own parts of one value, e.g. "a=1;b=1;"): revert removes only this tweak's part
+   * instead of restoring the backup, which would also undo the other tweaks' parts. null = nothing of ours left: put
+   * the backed-up original back (or delete the value if there's no backup).
+   */
+  toOff?: (cur: Value | null) => Value | null;
 }
 
 export interface Tweak extends TweakDefinition {
@@ -62,6 +68,14 @@ export function tweak(meta: TweakMeta, settings: Setting[]): Tweak {
     },
     async revert(ctx) {
       for (const s of [...settings].reverse()) {
+        if (s.toOff) {
+          const cur = await ctx.read(s.ref);
+          if (!isOn(s, cur)) continue;
+          const next = s.toOff(cur);
+          if (next !== null) await ctx.set(s.ref, next);
+          else if (!(await ctx.restore(s.ref))) await ctx.set(s.ref, null);
+          continue;
+        }
         if (await ctx.restore(s.ref)) continue;
         // No backup: the setting was changed outside the app. Only touch it if it holds our value, and only if
         // there is a default to write: "absent" can't be written to a power setting, task or service.

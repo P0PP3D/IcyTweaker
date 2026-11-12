@@ -124,6 +124,7 @@ export function validateValues(p: GameProfile, v: unknown): string | null {
   if (x.aa !== undefined && !int(x.aa, 0, (p.aa?.length ?? 0) - 1)) return 'Invalid anti-aliasing choice.';
   if (x.reflex !== undefined && !int(x.reflex, 0, (p.reflex?.length ?? 0) - 1)) return 'Invalid NVIDIA Reflex choice.';
   if (!Array.isArray(x.flags) || new Set(x.flags).size !== x.flags.length || x.flags.some((f) => !(f in p.flags))) return 'Invalid options.';
+  if (x.flags.includes('fullscreen') && x.flags.includes('borderless')) return 'Pick fullscreen or borderless windowed, not both.';
   return null;
 }
 

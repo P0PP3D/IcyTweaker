@@ -713,6 +713,99 @@ export const generalTweaks: Tweak[] = [
       off: null,
     })),
   ),
+
+  // ---- Added 2026-11-12 (values read on the dev PC, build 26200; absent ones noted)
+  tweak(
+    meta({
+      id: 'windowed-game-optimizations',
+      name: 'Optimizations for Windowed Games',
+      category: 'graphics',
+      description: 'Settings > Display > Graphics: borderless and windowed games present like fullscreen ones (lower latency, Auto HDR and VRR work).',
+      requiresAdmin: false,
+      builds: { min: 22000 },
+    }),
+    [dxFlag('SwapEffectUpgradeEnable')],
+  ),
+  tweak(
+    meta({
+      id: 'auto-hdr-on',
+      name: 'Auto HDR',
+      category: 'graphics',
+      description: 'Settings > Display > Graphics: adds HDR to DirectX 11/12 games that only have SDR. Needs an HDR display with HDR turned on.',
+      risk: 'balanced', // changes how games look: not in Safe Optimize
+      requiresAdmin: false,
+      builds: { min: 22000 },
+    }),
+    [dxFlag('AutoHDREnable')],
+  ),
+  regDwordTweak(
+    meta({ id: 'power-throttling-off', name: 'Power Throttling Off', category: 'performance', description: 'Stops Windows slowing down programs it thinks run in the background (game launchers, Discord, OBS).', requiresReboot: true }),
+    // Absent on the dev PC (Windows default: throttling on).
+    { hive: 'HKLM', key: 'SYSTEM\\CurrentControlSet\\Control\\Power\\PowerThrottling', name: 'PowerThrottlingOff', enabled: 1, defaultValue: null },
+  ),
+  regDwordTweak(
+    meta({
+      id: 'fast-startup-off',
+      name: 'Fast Startup Off',
+      category: 'system',
+      description: 'Shut down really shuts down: no half-hibernated kernel, so drivers and network start fresh. Startup from off takes a few seconds longer.',
+    }),
+    { hive: 'HKLM', key: 'SYSTEM\\CurrentControlSet\\Control\\Session Manager\\Power', name: 'HiberbootEnabled', enabled: 0, defaultValue: 1 },
+  ),
+  regDwordTweak(
+    meta({ id: 'startup-delay-off', name: 'No Startup Delay', category: 'system', description: 'Starts your startup apps right after sign-in instead of waiting about 10 seconds.', requiresAdmin: false }),
+    // The Serialize key is absent by default (the delay applies).
+    { hive: 'HKCU', key: 'Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\Serialize', name: 'StartupDelayInMSec', enabled: 0, defaultValue: null },
+  ),
+  regDwordTweak(
+    meta({
+      id: 'background-apps-off',
+      name: 'Background Apps Off',
+      category: 'performance',
+      description: 'Store apps stop running in the background (Settings > Apps). Their notifications and live updates arrive only while they are open.',
+      risk: 'balanced', // can delay notifications from Store apps (Phone Link, Teams): not in Safe Optimize
+      requiresAdmin: false,
+    }),
+    { hive: 'HKCU', key: 'Software\\Microsoft\\Windows\\CurrentVersion\\BackgroundAccessApplications', name: 'GlobalUserDisabled', enabled: 1, defaultValue: 0 },
+  ),
+  regTweak(
+    meta({ id: 'menu-delay-off', name: 'Instant Menus', category: 'system', description: 'Menus open right away instead of after a 400 ms hover delay. Takes effect after signing out.', requiresAdmin: false, requiresReboot: true }),
+    [{ hive: 'HKCU', key: 'Control Panel\\Desktop', name: 'MenuShowDelay', on: sz('0'), off: sz('400') }],
+  ),
+  regDwordTweak(
+    meta({
+      id: 'fault-tolerant-heap-off',
+      name: 'Fault Tolerant Heap Off',
+      category: 'performance',
+      description: 'Stops Windows quietly applying slower memory "fixes" to a program after it crashes a few times (it can stay on a game for good).',
+      requiresReboot: true,
+    }),
+    { hive: 'HKLM', key: 'SOFTWARE\\Microsoft\\FTH', name: 'Enabled', enabled: 0, defaultValue: 1 },
+  ),
+  regDwordTweak(
+    meta({ id: 'error-reporting-off', name: 'Windows Error Reporting Off', category: 'security', description: 'No crash reports collected or sent to Microsoft in the background.' }),
+    // Policy value; absent on the dev PC.
+    { hive: 'HKLM', key: `${POLICIES}\\Windows\\Windows Error Reporting`, name: 'Disabled', enabled: 1, defaultValue: null },
+  ),
 ];
+
+/**
+ * One "name=1;" part of DirectXUserGlobalSettings (Settings > Display > Graphics). Several tweaks share this value, so
+ * revert removes only this part (toOff) rather than restoring the whole backed-up value.
+ */
+function dxFlag(name: string): Setting {
+  const ref: SettingRef = { kind: 'reg', hive: 'HKCU', key: 'Software\\Microsoft\\DirectX\\UserGpuPreferences', name: 'DirectXUserGlobalSettings' };
+  const text = (v: Value | null) => ((v as RegValue | null)?.type === 'REG_SZ' ? (v as { data: string }).data : '');
+  const parts = (v: Value | null) => text(v).split(';').map((p) => p.trim()).filter(Boolean);
+  const others = (v: Value | null) => parts(v).filter((p) => p.split('=')[0] !== name);
+  return {
+    ref,
+    on: sz(`${name}=1;`),
+    off: sz(''),
+    matches: (cur) => parts(cur).includes(`${name}=1`),
+    toOn: (cur) => sz(`${[...others(cur), `${name}=1`].join(';')};`),
+    toOff: (cur) => (others(cur).length ? sz(`${others(cur).join(';')};`) : null),
+  };
+}
 
 export const settingRefs = (t: Tweak): SettingRef[] => t.settings.map((s) => s.ref);

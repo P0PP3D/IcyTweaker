@@ -194,5 +194,9 @@ Full spec: `docs/SPEC.md`. Work one phase of its "Build order" at a time.
   (`NVCP_SCRIPT` in fixes.ts, shared with the fix).
 - Recycle Bin page lists items via Shell.Application NameSpace(10) (main `recycleItems`, read-only). Preset icons:
   `ICON` map in Presets.tsx.
+- 0.1.4 tweaks: windowed-game optimizations + Auto HDR share `DirectXUserGlobalSettings` (`dxFlag` with `Setting.toOff`:
+  revert removes only its own `name=1;` part), power throttling, fast startup, startup delay, background apps,
+  menu delay, Fault Tolerant Heap, WER policy. Boost `quietNotifications` = `NOC_GLOBAL_SETTING_TOASTS_ENABLED` 0 during play
+  (verify: applies without sign-out). Game flag `borderless` (rival of `fullscreen`; validateValues refuses both).
 - Hardware detection (~9 s) is cached in `hardware.json` (userData) and refreshed in the background. Start-up reads
   must run in parallel (sequential awaits defeat the batched reads).
