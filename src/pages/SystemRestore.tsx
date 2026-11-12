@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import clsx from 'clsx';
 import type { BackupView, LogEntry, RestorePointView } from '../../shared/types';
-import { Button } from '../ui';
+import { Button, Loading } from '../ui';
 import type { Act } from './General';
 
 const when = (iso: string) => new Date(iso).toLocaleString();
@@ -62,7 +62,7 @@ export function SystemRestore({ busy, act }: { busy: boolean; act: Act }) {
       <div className="space-y-2">
         <h3 className="text-sm font-semibold uppercase tracking-wide text-slate-400">Restore points</h3>
         {!points ? (
-          <p className="text-sm text-slate-400">Loading…</p>
+          <Loading text="Loading…" />
         ) : points.error ? (
           <p className="text-sm text-amber-300">{points.error}</p>
         ) : points.points.length === 0 ? (

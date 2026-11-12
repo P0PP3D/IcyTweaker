@@ -211,8 +211,8 @@ Full spec: `docs/SPEC.md`. Work one phase of its "Build order" at a time.
   PowerShell query; GOG unverified); EA and Battle.net not supported (no documented install record). Library and profile
   launches go through main `startUnelevated` (.lnk + explorer). Launcher-junk cleaner targets (steam logs/depotcache, epic,
   riot, ubisoft, game logs). Home checkups: chipset driver date (Win32_PnPSignedDriver) + `openVendorPage` (AMD/Intel pages).
-- Installer: assisted NSIS, branded (build/installerSidebar.bmp + installerHeader.bmp from scripts/installer-art.ps1,
-  welcome text in installer.nsh `customWelcomePage`). Restart and install = `quitAndInstall(true, true)` (silent, runs the
+- Installer: one-click NSIS (owner's pick: no wizard pages; UAC, progress window, then the app opens into its beginner
+  guide). The old assisted-installer art (build/installer*.bmp, scripts/installer-art.ps1) is unused. Restart and install = `quitAndInstall(true, true)` (silent, runs the
   app after; the non-silent assisted run did not relaunch it).
 - 0.1.7: Focus `withBoost` (main `focusByBoost`: off only if Boost turned it on). Session `temps` (`tempSeries`, per-minute,
   max 240 points) -> Performance `TempHistory` (chart colours --chart-cpu/--chart-gpu, validated with the dataviz script).
@@ -223,3 +223,10 @@ Full spec: `docs/SPEC.md`. Work one phase of its "Build order" at a time.
   fold (localStorage `foldedSections`; the active page stays visible). Mouse polling test already lives on Devices.
 - Hardware detection (~9 s) is cached in `hardware.json` (userData) and refreshed in the background. Start-up reads
   must run in parallel (sequential awaits defeat the batched reads).
+- 0.1.8: engine `onProgress` -> progress task 'bulk' -> App `Activity` (presets, Apply/Revert/Undo All). `feature` reads
+  cached 10 min in the adapter (cleared only by feature writes); the engine's before/after reboot check skips
+  features (run() marks them). `ui.tsx` `Loading` spinner; a Button label ending in an ellipsis spins; App busy bar.
+  Focus: one `sc query`, parallel stop/start; pickers from `APPS_SCRIPT`/`parseAppChoices` (main `focusApps`, 60 s
+  cache). `pathMenu` (native right-click: Show in File Explorer / Copy path). Recycle Bin read from `$I` records
+  (`cleaner/recycle.ts`, Shell fallback). `walk` reads up to 16 folders at once (`dirs` still deepest first) and
+  returns `lastUsedMs`. Window shown on ready-to-show + `bringToFront` (brief always-on-top: the UAC prompt holds focus).

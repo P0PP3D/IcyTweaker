@@ -6,13 +6,15 @@ import { advancedTweaks } from './advanced/advanced';
 import { presets } from './tweaks/presets';
 import { TWEAK_TAGS, hasTag } from './tweaks/tags';
 import { buildTargets } from './cleaner/cleaner';
-import { DEFAULT_FOCUS, createFocus, validateFocus } from './games/focus';
+import { DEFAULT_FOCUS, createFocus, parseAppChoices, validateFocus } from './games/focus';
 import { createStartup, parseLogonTasks, startupSources } from './apps/startup';
 import { parseBoot } from './system/boot';
 import path from 'node:path';
 import { afterAll, describe, expect, it } from 'vitest';
 import { isTempDir } from './cleaner/cleaner';
 import { keptOut } from './cleaner/finder';
+import { listRecycleBin, parseIRecord } from './cleaner/recycle';
+import { walk } from './cleaner/walk';
 import { getKey, setKey } from './games/config';
 import { toWrites, validateValues } from './games/games';
 import { createBoost, DEFAULT_BOOST, validateBoost } from './games/boost';
@@ -227,7 +229,8 @@ describe('Focus Mode', () => {
   });
   it('stops only running services, starts exactly those again, and a leftover session is put back on resume', async () => {
     const running = new Set(['SysMain', 'WSearch']);
-    const fake = memoryAdapter(undefined, async (_f, args) => (args[0] === 'query' && running.has(args[1]) ? 'STATE              : 4  RUNNING' : 'STATE              : 1  STOPPED'));
+    // `sc query` lists running services only.
+    const fake = memoryAdapter(undefined, async (_f, args) => (args[0] === 'query' ? [...running].map((n) => `SERVICE_NAME: ${n}\r\nDISPLAY_NAME: x\r\n`).join('\r\n') : ''));
     const d = dir();
     await mkdir(d, { recursive: true });
     const log = async () => {};
@@ -364,5 +367,81 @@ describe('new game profiles', () => {
       for (const flag of p.recommended.flags ?? []) expect(p.flags[flag]?.length).toBeGreaterThan(0);
     }
     expect(gameProfiles.find((g) => g.id === 'dead-by-daylight')!.flags.fullscreen).toBeUndefined();
+  });
+});
+
+describe('Recycle Bin records', () => {
+  const rec = (version: number, p: string, size: number, ms: number) => {
+    const head = Buffer.alloc(24);
+    head.writeBigInt64LE(BigInt(version), 0);
+    head.writeBigInt64LE(BigInt(size), 8);
+    head.writeBigInt64LE((BigInt(ms) + 11_644_473_600_000n) * 10_000n, 16);
+    const name = Buffer.from(`${p}\0`, 'utf16le');
+    if (version === 1) return Buffer.concat([head, name, Buffer.alloc(520 - name.length)]);
+    const len = Buffer.alloc(4);
+    len.writeUInt32LE(p.length + 1);
+    return Buffer.concat([head, len, name]);
+  };
+  const at = Date.UTC(2026, 10, 12, 7, 22, 29);
+  it('reads version 2 and version 1 $I records', () => {
+    expect(parseIRecord(rec(2, 'C:/Users/me/Downloads/a b.zip', 1234, at))).toEqual({ path: 'C:/Users/me/Downloads/a b.zip', size: 1234, deleted: new Date(at).toISOString() });
+    expect(parseIRecord(rec(1, 'D:/x.txt', 5, at))?.path).toBe('D:/x.txt');
+    expect(parseIRecord(Buffer.alloc(10))).toBeNull();
+    expect(parseIRecord(rec(7, 'C:/x', 1, at))).toBeNull();
+  });
+  it('lists items that still have their $R file, newest first', async () => {
+    const d = dir();
+    const bin = path.join(d, '$Recycle.Bin', 'S-1-5-21-1');
+    await mkdir(bin, { recursive: true });
+    await writeFile(path.join(bin, '$IAAA.zip'), rec(2, 'C:/Users/me/old.zip', 10, at - 1000));
+    await writeFile(path.join(bin, '$RAAA.zip'), 'x');
+    await writeFile(path.join(bin, '$IBBB'), rec(2, 'C:/Users/me/folder', 20, at));
+    await mkdir(path.join(bin, '$RBBB'));
+    await writeFile(path.join(bin, '$ICCC.txt'), rec(2, 'C:/gone.txt', 1, at)); // its $R is gone: not listed
+    const items = await listRecycleBin([d], 'S-1-5-21-1');
+    expect(items.map((i) => [i.name, i.folder])).toEqual([
+      ['folder', true],
+      ['old.zip', false],
+    ]);
+  });
+});
+
+describe('Focus Mode app pickers', () => {
+  const b64 = (o: unknown) => Buffer.from(JSON.stringify(o)).toString('base64');
+  it('lists Start-menu and open apps once each, without uninstallers, Windows programs or core processes', () => {
+    const out = b64({
+      apps: [
+        { name: 'OBS Studio', path: 'C:\\Program Files\\obs-studio\\bin\\64bit\\obs64.exe' },
+        { name: 'Uninstall OBS', path: 'C:\\Program Files\\obs-studio\\uninstall.exe' },
+        { name: 'Notepad', path: 'C:\\Windows\\System32\\notepad.exe' },
+        { name: 'obs64', path: 'C:\\Program Files\\obs-studio\\bin\\64bit\\obs64.exe' },
+        { name: 'Explorer', path: 'D:\\x\\explorer.exe' },
+      ],
+      appx: 'MSTeams', // one item: ConvertTo-Json unwraps it
+      running: ['Discord'],
+    });
+    const r = parseAppChoices(out, () => false, { SystemRoot: 'C:\\Windows' });
+    expect(r.choices).toEqual([{ exe: 'obs64.exe', name: 'OBS Studio' }]);
+    expect(r.installed.sort()).toEqual(['discord.exe', 'ms-teams.exe']);
+  });
+  it('a built-in app counts as installed when its file exists', () => {
+    const r = parseAppChoices(b64({}), (p) => p === 'C:\\Users\\me\\AppData\\Roaming\\Spotify\\Spotify.exe', { APPDATA: 'C:\\Users\\me\\AppData\\Roaming' });
+    expect(r.installed).toEqual(['spotify.exe']);
+    expect(parseAppChoices('garbage', () => false, {})).toEqual({ choices: [], installed: [] });
+  });
+});
+
+describe('walk', () => {
+  it('lists deepest folders first and gives each file its last-used time', async () => {
+    const d = dir();
+    await mkdir(path.join(d, 'a', 'b', 'c'), { recursive: true });
+    await mkdir(path.join(d, 'z'), { recursive: true });
+    await writeFile(path.join(d, 'a', 'b', 'c', 'f.txt'), 'hi');
+    const r = await walk(d);
+    const i = (p: string) => r.dirs.indexOf(path.join(d, p));
+    expect(i('a/b/c')).toBeLessThan(i('a/b'));
+    expect(i('a/b')).toBeLessThan(i('a'));
+    expect(r.dirs).toHaveLength(4);
+    expect(r.files[0].lastUsedMs).toBeGreaterThan(0);
   });
 });

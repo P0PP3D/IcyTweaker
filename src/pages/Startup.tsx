@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import clsx from 'clsx';
 import type { BootInfo, StartupItemView } from '../../shared/types';
 import { Icon, type IconName } from '../icons';
-import { Badge, Button, Toggle, type Ask } from '../ui';
+import { Badge, Button, Toggle, type Ask, Loading } from '../ui';
 import type { Act } from './General';
 
 const sec = (ms: number | null) => (ms === null ? '—' : `${(ms / 1000).toFixed(1)} s`);
@@ -23,7 +23,7 @@ function BootTimes({ res }: { res: { info?: BootInfo; error?: string } | null })
       </div>
       {res?.error && <p className="text-sm text-rose-300">{res.error}</p>}
       {!res ? (
-        <p className="text-sm text-slate-400">Reading boot history…</p>
+        <Loading text="Reading boot history…" />
       ) : b && b.lastBootMs !== null ? (
         <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
           {(
@@ -127,7 +127,7 @@ export function Startup({ busy, act, ask }: { busy: boolean; act: Act; ask: Ask 
       </div>
       {res?.error && <p className="text-sm text-rose-300">{res.error}</p>}
       {!res ? (
-        <p className="text-sm text-slate-400">Reading startup items…</p>
+        <Loading text="Reading startup items…" />
       ) : (
         <ul className="divide-y divide-[var(--line)] rounded-xl bg-[var(--card)] ring-1 ring-[var(--line)]">
           {items.map((i) => (

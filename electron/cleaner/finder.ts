@@ -41,10 +41,8 @@ function fullHash(file: string): Promise<string | null> {
 /** Groups items by key, keeping groups of two or more. */
 async function regroup<T>(items: T[], key: (x: T) => Promise<string | null>): Promise<T[][]> {
   const m = new Map<string, T[]>();
-  for (const x of items) {
-    const k = await key(x);
-    if (k !== null) m.set(k, [...(m.get(k) ?? []), x]);
-  }
+  const keys = await Promise.all(items.map(key)); // reads in parallel (same-size groups are small)
+  items.forEach((x, i) => keys[i] !== null && m.set(keys[i]!, [...(m.get(keys[i]!) ?? []), x]));
   return [...m.values()].filter((g) => g.length > 1);
 }
 
@@ -80,9 +78,7 @@ export async function findOldFiles(
   const out: OldFile[] = [];
   for (const f of files) {
     if (f.size < (o.minSize ?? 50 * 1024 * 1024)) continue;
-    const s = await stat(f.path).catch(() => null);
-    if (!s) continue;
-    const last = Math.max(s.atimeMs, s.mtimeMs);
+    const last = f.lastUsedMs ?? 0; // from the walk's own stat (a second stat per file doubled the scan)
     if (last < cutoff) out.push({ path: f.path, size: f.size, lastUsed: new Date(last).toISOString() });
   }
   return out.sort((a, b) => b.size - a.size).slice(0, 500);

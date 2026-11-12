@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import clsx from 'clsx';
 import type { AppState, DriveInfo } from '../../shared/types';
-import { Badge, Button, MUTED_BADGE, formatBytes } from '../ui';
+import { Badge, Button, MUTED_BADGE, formatBytes, Loading } from '../ui';
 
 const value = (v: number | null, unit = '') => (v === null || v === undefined ? '—' : `${v.toLocaleString()}${unit}`);
 
@@ -25,7 +25,7 @@ export function DriveHealth({ state }: { state: AppState }) {
         <Button onClick={load}>Refresh</Button>
       </div>
       {!data ? (
-        <p className="text-sm text-slate-400">Reading drives…</p>
+        <Loading text="Reading drives…" />
       ) : (
         <>
           {data.error && <p className="text-sm text-rose-300">{data.error}</p>}

@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import clsx from 'clsx';
 import type { AppState, ServiceInfo, ServiceLevel, ServiceStartType, TweakStatus } from '../../shared/types';
-import { Badge, Button, MUTED_BADGE, Tabs, TweakRow, type Ask } from '../ui';
+import { Badge, Button, MUTED_BADGE, Tabs, TweakRow, type Ask, Loading } from '../ui';
 import { tweakHandlers, type Act } from './General';
 
 const LEVELS: Array<{ id: ServiceLevel; label: string; hint: string }> = [
@@ -127,7 +127,7 @@ function ServiceManager({ busy, act, ask }: { busy: boolean; act: Act; ask: Ask 
       </div>
       {list?.error && <p className="text-sm text-rose-300">{list.error}</p>}
       {!list ? (
-        <p className="text-sm text-slate-400">Reading services…</p>
+        <Loading text="Reading services…" />
       ) : (
         <ul className="divide-y divide-white/5 rounded-lg bg-[var(--card)] ring-1 ring-[var(--line)]">
           {shown.map((s) => {

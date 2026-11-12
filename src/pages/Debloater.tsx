@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import clsx from 'clsx';
 import type { AppItem, Progress } from '../../shared/types';
-import { Badge, Button, MUTED_BADGE, Tabs, formatBytes, type Ask } from '../ui';
+import { Badge, Button, MUTED_BADGE, Tabs, formatBytes, type Ask, Loading } from '../ui';
 import type { Act } from './General';
 
 type Sort = 'name' | 'size' | 'date' | 'used';
@@ -127,7 +127,7 @@ export function Debloater({ busy, act, ask }: { busy: boolean; act: Act; ask: As
 
       {error && <p className="text-sm text-rose-300">{error}</p>}
       {!apps ? (
-        <p className="text-sm text-slate-400">Reading installed apps…</p>
+        <Loading text="Reading installed apps…" />
       ) : (
         <ul className="divide-y divide-white/5 rounded-lg bg-[var(--card)] ring-1 ring-[var(--line)]">
           {shown.map((a) => (

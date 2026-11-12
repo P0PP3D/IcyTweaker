@@ -2,6 +2,28 @@
 
 Each section becomes the description of its GitHub release (see .github/workflows/release-notes.yml).
 
+## v0.1.8
+
+**Changed**
+- **One-click installer:** no more setup wizard. Approve the admin prompt and IcyTweaker installs and opens by itself.
+- **Progress screen for presets, Apply All and Undo All:** shows which tweak is being changed and how far along it is.
+- **Something moves whenever IcyTweaker is working:** spinners on every loading list and busy button, and a progress bar along the top during changes.
+- **Focus Mode app pickers:** choose apps to close (and exceptions) from a searchable list of your own apps instead of typing .exe names. Built-in suggestions only show apps you actually have.
+- **Right-click any file in the cleaner lists** (Recycle Bin, Old Files, Duplicates, Disk Analyzer) to show it in File Explorer or copy its path.
+
+**Faster**
+- Focus Mode turns on and off much faster (services and apps are handled all at once).
+- Startup Apps loads much faster.
+- Emptying the Recycle Bin is quicker and shows "Emptying…" while it works.
+- The Recycle Bin list appears instantly, and Old Files and Duplicate Finder scans run about 2–4× faster.
+- Every button responds sooner: the Windows Features check is no longer redone on every refresh.
+
+**Fixed**
+- Presets and restore points no longer freeze the app: every change used to wait on a slow Windows Features check first.
+- The beginner guide shows when it's making a restore point or applying a preset, and can't be closed halfway.
+- When Windows skips a restore point (it allows one a day), IcyTweaker now says so instead of "created".
+- IcyTweaker comes to the front when it opens (it used to stay behind other windows after the admin prompt).
+
 ## v0.1.7
 
 **New**

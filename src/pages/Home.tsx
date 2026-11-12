@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import clsx from 'clsx';
 import type { AppState, MonitorInfo, Stats } from '../../shared/types';
 import { Icon, type IconName } from '../icons';
-import { Button, Ring } from '../ui';
+import { Button, Loading, Ring } from '../ui';
 import { appliedCount } from './General';
 import { openGuide } from '../Onboarding';
 
@@ -158,7 +158,7 @@ function Checkups({ go }: { go: Go }) {
     <div className="rounded-xl bg-[var(--card)] ring-1 ring-[var(--line)]">
       <div className="flex items-center justify-between px-5 pt-4">
         <div className="font-medium text-slate-100">Checkups</div>
-        {(!monitors || !c) && <span className="text-xs text-slate-500">Checking…</span>}
+        {(!monitors || !c) && <Loading text="Checking…" className="text-xs text-slate-500" />}
       </div>
       <ul className="divide-y divide-[var(--line)] px-2 pb-2 pt-1">
         {rows.map((r) => (

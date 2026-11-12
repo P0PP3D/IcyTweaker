@@ -137,6 +137,8 @@ export function createEngine(o: {
   hardware?: { laptop: boolean | null; ssd: boolean | null };
   /** Anti-cheats installed on this PC (e.g. 'Vanguard'). */
   antiCheats?: string[];
+  /** Bulk changes: called as they go (done/total, the tweak being changed); total 0 = still checking, current '' = finished. */
+  onProgress?: (label: string, done: number, total: number, current: string) => void;
 }) {
   const { tweaks, presets, safety } = o;
   const fixes = o.fixes ?? [];
@@ -170,7 +172,9 @@ export function createEngine(o: {
   function mutate(fn: () => Promise<ActionReport>, reboot?: () => string | null): Promise<ActionReport> {
     const next = queue.then(async () => {
       // Only restart-required tweaks matter here; reading every tweak twice per change made each change slow.
-      const watched = tweaks.filter((t) => t.requiresReboot);
+      // Windows Features are left out: their read is one DISM run (up to a minute), twice per change froze every
+      // button. run() marks them instead.
+      const watched = tweaks.filter((t) => t.requiresReboot && t.page !== 'features');
       const before = await Promise.all(watched.map(status));
       const report = await fn();
       const after = await Promise.all(watched.map(status));
@@ -200,6 +204,7 @@ export function createEngine(o: {
       }
     }
     await safety.log(action, t.id, error === null, error ?? undefined);
+    if (error === null && t.requiresReboot && t.page === 'features') rebootPending.add(t.name);
     return error;
   }
 
@@ -215,6 +220,16 @@ export function createEngine(o: {
 
   /** Bulk over `list`, skipping what is unsupported, unavailable, Risky (on apply) or already in the target state. */
   async function bulkFor(label: string, action: 'apply' | 'revert', list: TweakDefinition[]): Promise<ActionReport> {
+    const report = (done: number, total: number, current: string) => o.onProgress?.(label, done, total, current);
+    report(0, 0, 'Checking your current settings…');
+    try {
+      return await bulkSteps(label, action, list, report);
+    } finally {
+      report(0, 0, '');
+    }
+  }
+
+  async function bulkSteps(label: string, action: 'apply' | 'revert', list: TweakDefinition[], report: (done: number, total: number, current: string) => void): Promise<ActionReport> {
     const st = await statuses();
     const todo = list.filter((t) => {
       const s = st[tweaks.indexOf(t)];
@@ -224,7 +239,8 @@ export function createEngine(o: {
     if (todo.length === 0) return { ok: true, message: 'Nothing to do.' };
     return withRestorePoint(label, async () => {
       const errors: string[] = [];
-      for (const t of todo) {
+      for (const [i, t] of todo.entries()) {
+        report(i, todo.length, t.name);
         const e = await run(t, action);
         if (e) errors.push(`${t.name}: ${e}`);
       }
@@ -364,7 +380,10 @@ export function createEngine(o: {
       mutate(async () => {
         const label = typeof name === 'string' ? name.replace(/[\x00-\x1f\x7f]/g, ' ').trim().slice(0, 60) : '';
         try {
-          await safety.restorePoint(`IcyTweaker: ${label || 'Manual restore point'}`, true); // asked for: always call Windows
+          const note = await safety.restorePoint(`IcyTweaker: ${label || 'Manual restore point'}`, true); // asked for: always call Windows
+          // Windows makes at most one per 24 h by default and only warns when it skips one.
+          if (note && /cannot be created|1440 minutes/i.test(note))
+            return { ok: true, message: 'Windows already made a restore point in the last 24 hours, so it keeps that one (Windows allows one a day).' };
           return { ok: true, message: o.live ? 'Restore point created.' : 'Restore point skipped (dry-run).' };
         } catch (err) {
           return { ok: false, message: `Restore point failed: ${errText(err)}` };

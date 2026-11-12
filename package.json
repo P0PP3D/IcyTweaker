@@ -1,7 +1,7 @@
 {
   "name": "icycleaner",
   "productName": "IcyTweaker",
-  "version": "0.1.7",
+  "version": "0.1.8",
   "private": true,
   "description": "Windows 10/11 tweaker and cleaner for gamers",
   "main": "dist-electron/main.js",
@@ -48,18 +48,14 @@
       "requestedExecutionLevel": "requireAdministrator"
     },
     "nsis": {
-      "oneClick": false,
+      "oneClick": true,
       "perMachine": true,
-      "allowToChangeInstallationDirectory": true,
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true,
       "shortcutName": "IcyTweaker",
       "include": "build/installer.nsh",
       "deleteAppDataOnUninstall": false,
       "artifactName": "IcyTweaker-Setup-${version}.${ext}",
-      "installerSidebar": "build/installerSidebar.bmp",
-      "uninstallerSidebar": "build/installerSidebar.bmp",
-      "installerHeader": "build/installerHeader.bmp",
       "runAfterFinish": true
     }
   },

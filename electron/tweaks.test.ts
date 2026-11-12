@@ -355,6 +355,33 @@ describe('presets', () => {
     for (const [ref, value] of seed) expect(await fake.read(ref)).toEqual(value);
   });
 
+  it('a preset reports its progress: checking, each tweak, then finished', async () => {
+    const { safety } = await setup();
+    const seen: Array<[number, number, string]> = [];
+    const engine = createEngine({ ...opts, safety, onProgress: (label, done, total, current) => (expect(label).toBe('Debloat Only'), seen.push([done, total, current])) });
+    expect((await engine.applyPreset('debloat-only')).ok).toBe(true);
+    expect(seen[0]).toEqual([0, 0, 'Checking your current settings…']);
+    expect(seen.at(-1)).toEqual([0, 0, '']);
+    const steps = seen.filter(([, total]) => total > 0);
+    expect(steps.length).toBeGreaterThan(0);
+    expect(steps.map(([d]) => d)).toEqual(steps.map((_, i) => i));
+  });
+
+  it('a Windows Features change marks a restart without the slow DISM before/after read', async () => {
+    const { safety } = await setup();
+    const engine = createEngine({ ...opts, tweaks: featureTweaks, safety, isAdmin: true });
+    const t = featureTweaks[0];
+    expect((await engine.setTweak(t.id, true)).ok).toBe(true);
+    expect((await engine.getState()).rebootPending).toContain(t.name);
+  });
+
+  it('says so when Windows skips a manual restore point (one per 24 h)', async () => {
+    const { fake, safety } = await setup();
+    fake.exec = async () => ({ stdout: 'WARNING: A new system restore point cannot be created because one has already been created within the past 1440 minutes.', stderr: '', code: 0 });
+    const r = await createEngine({ ...opts, safety }).createRestorePoint('x');
+    expect(r.message).toMatch(/already made a restore point/);
+  });
+
   it('rejects unknown preset ids', async () => {
     const { safety } = await setup();
     expect((await createEngine({ ...opts, safety }).applyPreset('nope')).ok).toBe(false);

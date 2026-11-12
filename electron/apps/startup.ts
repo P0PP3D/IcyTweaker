@@ -75,28 +75,33 @@ export function createStartup(safety: Safety, sources: Source[]) {
 
   return {
     async list(): Promise<StartupItemView[]> {
-      const items: StartupItemView[] = [];
-      for (const s of sources) {
-        const entries = s.key
-          ? parseRegValues(await safety.adapter.query(REG_EXE, ['query', `${s.hive}\\${s.key}`, '/reg:64']).catch(() => ''))
-          : (await readdir(s.folder!).catch(() => [] as string[])).filter((f) => f.toLowerCase() !== 'desktop.ini').map((f) => ({ name: f, data: path.join(s.folder!, f) }));
-        for (const e of entries) {
-          items.push({
-            id: `${s.id}|${e.name}`,
-            name: e.name.replace(/\.lnk$/i, ''),
-            command: e.data,
-            location: s.location,
-            enabled: enabledFlag(await safety.read(flagRef(s, e.name))),
-            requiresAdmin: s.hive === 'HKLM',
-            kind: s.key ? 'registry' : 'folder',
-          });
-        }
-      }
+      // Everything at once (sources, their flags, the task listing): one after another took many seconds, and the
+      // adapter only batches registry reads asked for in the same tick.
+      const tasks = logonTasks(safety);
+      const perSource = await Promise.all(
+        sources.map(async (s) => {
+          const entries = s.key
+            ? parseRegValues(await safety.adapter.query(REG_EXE, ['query', `${s.hive}\\${s.key}`, '/reg:64']).catch(() => ''))
+            : (await readdir(s.folder!).catch(() => [] as string[])).filter((f) => f.toLowerCase() !== 'desktop.ini').map((f) => ({ name: f, data: path.join(s.folder!, f) }));
+          const flags = await Promise.all(entries.map((e) => safety.read(flagRef(s, e.name))));
+          return entries.map(
+            (e, i): StartupItemView => ({
+              id: `${s.id}|${e.name}`,
+              name: e.name.replace(/\.lnk$/i, ''),
+              command: e.data,
+              location: s.location,
+              enabled: enabledFlag(flags[i]),
+              requiresAdmin: s.hive === 'HKLM',
+              kind: s.key ? 'registry' : 'folder',
+            }),
+          );
+        }),
+      );
       // Scheduled tasks that start at sign-in (outside Windows' own \Microsoft\ tasks and IcyTweaker's).
-      for (const t of await logonTasks(safety)) {
-        items.push({ id: `task|${t.path}`, name: t.path.split('\\').pop() || t.path, command: t.command, location: `Scheduled task: ${t.path}`, enabled: t.enabled, requiresAdmin: true, kind: 'task' });
-      }
-      return items;
+      const taskItems = (await tasks).map(
+        (t): StartupItemView => ({ id: `task|${t.path}`, name: t.path.split('\\').pop() || t.path, command: t.command, location: `Scheduled task: ${t.path}`, enabled: t.enabled, requiresAdmin: true, kind: 'task' }),
+      );
+      return [...perSource.flat(), ...taskItems];
     },
 
     /**

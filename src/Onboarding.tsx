@@ -22,17 +22,19 @@ interface Step {
  */
 export function Onboarding({ state, onDone, go }: { state: AppState; onDone: () => void; go: (p: GuidePage) => void }) {
   const [step, setStep] = useState(0);
-  const [busy, setBusy] = useState(false);
+  const [busy, setBusy] = useState<string | null>(null); // the step running; the guide can't be closed meanwhile
   const [done, setDone] = useState<Record<string, ActionReport>>({});
   const recommended = state.presets.find((p) => p.id === 'safe-optimize');
 
   async function run(key: string, fn: () => Promise<ActionReport>) {
-    setBusy(true);
+    setBusy(key);
     const r = await fn().catch((e) => ({ ok: false, message: String(e) }));
     setDone((d) => ({ ...d, [key]: r }));
-    setBusy(false);
+    setBusy(null);
   }
+  const close = () => !busy && onDone();
   const open = (p: GuidePage) => {
+    if (busy) return;
     onDone();
     go(p);
   };
@@ -127,6 +129,7 @@ export function Onboarding({ state, onDone, go }: { state: AppState; onDone: () 
                 text: 'A safety snapshot of Windows. Takes under a minute.',
                 action: () => run('rp', () => window.api.createRestorePoint('Before IcyTweaker')),
                 label: 'Create',
+                working: 'Creating the restore point… this can take a minute.',
                 hint: !state.isAdmin && state.live ? 'Needs administrator: relaunch as admin first, or skip.' : '',
               },
               {
@@ -136,9 +139,10 @@ export function Onboarding({ state, onDone, go }: { state: AppState; onDone: () 
                 text: 'Only tweaks with no downside. The recommended start.',
                 action: () => run('preset', () => window.api.applyPreset(recommended!.id)),
                 label: 'Apply',
+                working: 'Applying tweaks… this can take a minute.',
                 hint: '',
               },
-              { key: 'clean', n: 3, title: 'Run a Health Check', text: 'Find out how much safe junk can go.', action: () => open('health'), label: 'Open', hint: '' },
+              { key: 'clean', n: 3, title: 'Run a Health Check', text: 'Find out how much safe junk can go.', action: () => open('health'), label: 'Open', working: '', hint: '' },
             ].map((x) => {
               const r = done[x.key];
               return (
@@ -153,12 +157,18 @@ export function Onboarding({ state, onDone, go }: { state: AppState; onDone: () 
                   </span>
                   <span className="min-w-0 flex-1">
                     <span className="block font-medium text-slate-100">{x.title}</span>
-                    <span className={clsx('block text-xs', r ? (r.ok ? 'text-emerald-300' : 'text-rose-300') : 'text-slate-400')}>{r ? r.message : x.hint || x.text}</span>
+                    <span className={clsx('block text-xs', busy === x.key ? 'text-sky-300' : r ? (r.ok ? 'text-emerald-300' : 'text-rose-300') : 'text-slate-400')}>
+                      {busy === x.key ? x.working : r ? r.message : x.hint || x.text}
+                    </span>
                   </span>
-                  {!r?.ok && (
-                    <Button primary disabled={busy || (x.key === 'preset' && !recommended)} onClick={() => void x.action()}>
-                      {x.label}
-                    </Button>
+                  {busy === x.key ? (
+                    <span className="h-5 w-5 shrink-0 animate-spin rounded-full border-2 border-sky-500/25 border-t-sky-400" aria-hidden />
+                  ) : (
+                    !r?.ok && (
+                      <Button primary disabled={!!busy || (x.key === 'preset' && !recommended)} onClick={() => void x.action()}>
+                        {x.label}
+                      </Button>
+                    )
                   )}
                 </li>
               );
@@ -181,7 +191,7 @@ export function Onboarding({ state, onDone, go }: { state: AppState; onDone: () 
               <span key={i} className={clsx('h-1.5 rounded-full transition-all', i === step ? 'w-6 bg-sky-400' : i < step ? 'w-3 bg-sky-400/50' : 'w-3 bg-white/15')} />
             ))}
           </div>
-          <button onClick={onDone} className="text-xs text-slate-400 hover:text-slate-200">
+          <button onClick={close} disabled={!!busy} className="text-xs text-slate-400 hover:text-slate-200 disabled:opacity-40">
             Skip guide
           </button>
         </div>
@@ -195,10 +205,10 @@ export function Onboarding({ state, onDone, go }: { state: AppState; onDone: () 
         </div>
         <div className="space-y-3 text-sm leading-relaxed text-slate-300">{s.body}</div>
         <div className="flex justify-between gap-2 pt-1">
-          <Button disabled={step === 0} onClick={() => setStep(step - 1)}>
+          <Button disabled={step === 0 || !!busy} onClick={() => setStep(step - 1)}>
             Back
           </Button>
-          <Button primary onClick={() => (last ? onDone() : setStep(step + 1))}>
+          <Button primary disabled={!!busy} onClick={() => (last ? close() : setStep(step + 1))}>
             {last ? 'Finish' : 'Next'}
           </Button>
         </div>

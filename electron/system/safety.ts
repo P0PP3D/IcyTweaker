@@ -156,7 +156,8 @@ export async function createSafety(adapter: SystemAdapter, dataDir: string, { re
   /** Windows restore point via Checkpoint-Computer. Throws if it fails. */
   const hooks = { activity: (_task: 'restore-point' | 'restart', _active: boolean) => {} };
 
-  async function restorePoint(description: string, force = false) {
+  /** Returns what Windows printed (a warning when it skipped making one), if anything. */
+  async function restorePoint(description: string, force = false): Promise<string | undefined> {
     const desc = description.replace(/'/g, "''");
     if (!force && Date.now() - lastRestorePoint < rpWindow) {
       await log('restore-point', description, true, `covered by the restore point from ${new Date(lastRestorePoint).toLocaleString()} (Windows makes one per 24 h)`);
@@ -174,6 +175,7 @@ export async function createSafety(adapter: SystemAdapter, dataDir: string, { re
       await log('restore-point', description, true, adapter.live ? (stderr || stdout).trim() || undefined : 'dry-run: not created');
       lastRestorePoint = Date.now();
       await writeFile(rpFile, JSON.stringify({ at: lastRestorePoint })).catch(() => {});
+      return (stderr || stdout).trim() || undefined;
     } catch (err) {
       await log('restore-point', description, false, (err as Error).message);
       throw err;

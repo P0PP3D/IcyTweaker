@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import clsx from 'clsx';
-import type { ActionReport, AppState, DriverJobView, Risk } from '../shared/types';
+import type { ActionReport, AppState, DriverJobView, Progress, Risk } from '../shared/types';
 import { Settings } from './pages/Settings';
 import { Devices } from './pages/Devices';
 import { Startup } from './pages/Startup';
@@ -25,7 +25,7 @@ import { Games } from './pages/Games';
 import { AppOptimizer } from './pages/AppOptimizer';
 import { Advanced, Bios } from './pages/Advanced';
 import { Icon, Logo, type IconName } from './icons';
-import { Banner, Button, ConfirmDialog, TweakRow, type Ask } from './ui';
+import { Banner, Button, ConfirmDialog, Loading, TweakRow, type Ask } from './ui';
 import { applyTheme } from './theme';
 
 const PAGES = ['home', 'general', 'debloater', 'fixes', 'presets', 'restore', 'services', 'network', 'resources', 'games', 'appopt', 'advanced', 'bios', 'health', 'smart', 'browsers', 'apps', 'analyzer', 'drives', 'duplicates', 'oldfiles', 'privacy', 'recycle', 'settings', 'devices', 'startup', 'focus', 'olddrivers', 'features'] as const;
@@ -63,10 +63,12 @@ function TitleBar({ crumb }: { crumb: string }) {
 /** Full-window status while Windows makes a restore point or is about to restart (both can take a while). */
 function Activity() {
   const [task, setTask] = useState<'restore-point' | 'restart' | null>(null);
+  const [bulk, setBulk] = useState<Progress | null>(null); // presets, Apply All, Undo All: a restore point can show on top
   const [left, setLeft] = useState(5);
   useEffect(
     () =>
       window.api.onProgress((p) => {
+        if (p.task === 'bulk') return setBulk(p.current ? p : null);
         if (p.task !== 'restore-point' && p.task !== 'restart') return;
         setTask(p.current ? p.task : null);
         if (p.task === 'restart') setLeft(5);
@@ -83,6 +85,28 @@ function Activity() {
       clearTimeout(done);
     };
   }, [task]);
+  if (!task && bulk)
+    return (
+      <div role="alertdialog" aria-live="polite" aria-label={`Applying ${bulk.label ?? ''}`} className="fixed inset-0 z-50 grid place-items-center bg-black/60 backdrop-blur-sm animate-[fadein_.2s_ease-out]">
+        <div className="w-[min(26rem,calc(100vw-2rem))] rounded-2xl bg-[var(--panel)] p-6 text-center shadow-2xl ring-1 ring-[var(--line)]">
+          <div className="relative mx-auto mb-4 h-16 w-16">
+            <div className="absolute inset-0 rounded-full border-4 border-sky-500/20" />
+            <div className="absolute inset-0 animate-spin rounded-full border-4 border-transparent border-t-sky-400" />
+            {bulk.total > 0 && <div className="absolute inset-0 grid place-items-center text-sm font-semibold text-sky-300">{Math.round((bulk.done / bulk.total) * 100)}%</div>}
+          </div>
+          <div className="text-lg font-semibold text-slate-100">{bulk.label}…</div>
+          <p className="mt-1 truncate text-sm text-slate-400">{bulk.total > 0 ? `${bulk.done + 1} of ${bulk.total}: ${bulk.current}` : bulk.current}</p>
+          <div className="mt-4 h-1.5 overflow-hidden rounded-full bg-white/10">
+            {bulk.total > 0 ? (
+              <div className="h-full rounded-full bg-sky-400 transition-[width] duration-300" style={{ width: `${(bulk.done / bulk.total) * 100}%` }} />
+            ) : (
+              <div className="h-full w-1/3 animate-[slide_1.4s_ease-in-out_infinite] rounded-full bg-sky-400" />
+            )}
+          </div>
+          <p className="mt-3 text-xs text-slate-500">Every change is backed up. Please keep IcyTweaker open.</p>
+        </div>
+      </div>
+    );
   if (!task) return null;
   const rp = task === 'restore-point';
   return (
@@ -215,7 +239,7 @@ export function App() {
     }
   }
 
-  if (!state) return <div className="drag flex h-screen items-center justify-center text-slate-400">Reading system state…</div>;
+  if (!state) return <div className="drag flex h-screen items-center justify-center"><Loading text="Reading system state…" /></div>;
 
   const q = query.trim().toLowerCase();
   const results = q ? state.tweaks.filter((t) => `${t.name} ${t.description} ${t.category}`.toLowerCase().includes(q)) : [];
@@ -279,6 +303,11 @@ export function App() {
   return (
     <div className="flex h-screen text-slate-200">
       <Activity />
+      {busy && (
+        <div role="progressbar" aria-label="Working" className="fixed inset-x-0 top-0 z-50 h-0.5 overflow-hidden bg-sky-500/15">
+          <div className="h-full w-1/3 animate-[slide_1.4s_ease-in-out_infinite] rounded-full bg-sky-400" />
+        </div>
+      )}
       <aside className={clsx('sidebar-glow flex shrink-0 flex-col overflow-hidden transition-[width] duration-200', collapsed ? 'w-[72px]' : 'w-64')}>
         <div className="drag flex h-14 shrink-0 items-center justify-between gap-2 px-4">
           <div className="flex min-w-0 items-center gap-2.5">

@@ -237,6 +237,7 @@ type KeyValues = Map<string, { type: string; raw: string }>;
 const regCache = new Map<string, Fresh<KeyValues>>();
 let regBatch: Array<{ path: string; resolve: (v: KeyValues) => void }> = [];
 let taskCache: Fresh<Map<string, string> | null> | null = null;
+let featureCache: { at: number; value: Promise<ReturnType<typeof parseFeatures> | null> } | null = null;
 
 /** Forgets cached reads. Called around every live write and exec. */
 export const clearReadCache = () => {
@@ -444,9 +445,15 @@ export async function liveRead(ref: SettingRef): Promise<Value | null> {
     case 'regKey':
       return readRun(REG_EXE, ['query', `${ref.hive}\\${ref.key}`, '/reg:64']).then(() => true, () => null);
     case 'feature': {
-      // One DISM listing for every feature (identical reads share one run). Needs administrator: else null (unavailable).
-      const out = await readRun(DISM_EXE, ['/online', '/English', '/get-features', '/format:table'], 120_000).then((r) => r.stdout, () => '');
-      return parseFeatures(out).get(ref.name.toLowerCase()) ?? null;
+      // One DISM listing for every feature. Needs administrator: else null (unavailable). DISM takes up to a minute,
+      // so the listing is kept 10 minutes (only our own feature writes clear it), else every refresh waited on it.
+      // ponytail: a feature changed in Windows' own dialog shows up within 10 minutes, not at once.
+      if (!featureCache || Date.now() - featureCache.at > 600_000) {
+        const value = run(DISM_EXE, ['/online', '/English', '/get-features', '/format:table'], 120_000).then((r) => parseFeatures(r.stdout), () => null);
+        featureCache = { at: Date.now(), value };
+        void value.then((v) => v === null && featureCache?.value === value && (featureCache = null)); // failures aren't kept
+      }
+      return (await featureCache.value)?.get(ref.name.toLowerCase()) ?? null;
     }
     case 'configKey': {
       const text = await readFile(ref.file, 'utf8').catch(() => null);
@@ -533,6 +540,7 @@ async function liveWrite(ref: SettingRef, value: Value | null): Promise<void> {
     }
     case 'feature':
       // 3010 = done, restart needed. Enabling may download files from Windows Update. A feature can't be "absent".
+      featureCache = null;
       if (value === 'enabled' || value === 'disabled')
         await run(
           DISM_EXE,

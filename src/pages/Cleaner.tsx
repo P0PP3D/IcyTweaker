@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import clsx from 'clsx';
 import type { AppState, CleanResult, CleanRisk, CleanTargetView, Progress, RecycleItem, ScanResult } from '../../shared/types';
 import { Icon } from '../icons';
-import { Badge, Banner, Button, MUTED_BADGE, Ring, ScanAge, ago, formatBytes, type Ask } from '../ui';
+import { Badge, Banner, Button, MUTED_BADGE, Ring, ScanAge, ago, formatBytes, type Ask, pathMenu } from '../ui';
 import type { Act } from './General';
 
 const RISK: Record<CleanRisk, string> = {
@@ -272,6 +272,7 @@ export function RecycleBin({ busy, act, ask }: { busy: boolean; act: Act; ask: A
   const [items, setItems] = useState<{ items: RecycleItem[]; error?: string } | null>(null);
   const [filter, setFilter] = useState('');
   const [sort, setSort] = useState<'deleted' | 'size' | 'name'>('deleted');
+  const [emptying, setEmptying] = useState(false);
   const load = useCallback(async () => {
     const [s, list] = await Promise.all([window.api.scanCleanTargets(['recycle-bin']), window.api.recycleItems()]);
     setScan(s[0] ?? null);
@@ -286,8 +287,14 @@ export function RecycleBin({ busy, act, ask }: { busy: boolean; act: Act; ask: A
   const empty = scan !== null && scan.files === 0;
   async function emptyBin() {
     if (!(await ask('Empty the Recycle Bin?', `Permanently deletes everything in it (${formatBytes(scan!.bytes)}) on every drive. It can't be restored afterwards.`, 'Empty Recycle Bin'))) return;
-    await act(async () => (await window.api.cleanTargets(['recycle-bin'])).report);
-    await load();
+    setEmptying(true);
+    try {
+      // The list reloads as soon as the bin is empty, alongside the app's own refresh (not after it).
+      const done = window.api.cleanTargets(['recycle-bin']);
+      await Promise.all([act(async () => (await done).report), done.then(load, () => load())]);
+    } finally {
+      setEmptying(false);
+    }
   }
   return (
     <section className="space-y-4">
@@ -312,8 +319,8 @@ export function RecycleBin({ busy, act, ask }: { busy: boolean; act: Act; ask: A
           <Button disabled={busy} onClick={() => void window.api.openShortcut('recycle-bin').then(() => undefined)}>
             Open Recycle Bin
           </Button>
-          <Button danger disabled={busy || !scan || empty} onClick={() => void emptyBin()}>
-            Empty Recycle Bin
+          <Button danger disabled={busy || emptying || !scan || empty} onClick={() => void emptyBin()}>
+            {emptying ? 'Emptying…' : 'Empty Recycle Bin'}
           </Button>
         </div>
       </div>
@@ -339,7 +346,7 @@ export function RecycleBin({ busy, act, ask }: { busy: boolean; act: Act; ask: A
           </div>
           <ul className="max-h-[55vh] divide-y divide-[var(--line)] overflow-y-auto">
             {shown.map((i, n) => (
-              <li key={`${i.from}\\${i.name}:${n}`} className="flex items-center gap-3 px-4 py-2">
+              <li key={`${i.from}\\${i.name}:${n}`} className="flex items-center gap-3 px-4 py-2" {...pathMenu(`${i.from}\\${i.name}`)}>
                 {/* Windows lists archives (.zip, .rar…) as folders, since it can open them like one. */}
                 {(() => {
                   const dir = i.folder && !/\.(zip|rar|7z|cab|tar|gz)$/i.test(i.name);

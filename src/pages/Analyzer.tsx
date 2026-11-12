@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import clsx from 'clsx';
 import type { AnalyzeView, DirEntry, Progress } from '../../shared/types';
 import { squarify } from '../treemap';
-import { Button, ScanAge, formatBytes, type Ask } from '../ui';
+import { Button, ScanAge, formatBytes, type Ask, pathMenu } from '../ui';
 import type { Act } from './General';
 
 const COLORS = ['bg-sky-500/70', 'bg-violet-500/70', 'bg-emerald-500/70', 'bg-amber-500/70', 'bg-rose-500/70', 'bg-cyan-500/70', 'bg-fuchsia-500/70', 'bg-lime-500/70'];
@@ -19,6 +19,7 @@ function Treemap({ entries, onOpen }: { entries: DirEntry[]; onOpen: (e: DirEntr
         return (
           <button
             key={e.path}
+            {...pathMenu(e.path)}
             title={`${e.name} · ${formatBytes(e.size)}`}
             onClick={() => onOpen(e)}
             className={clsx('absolute overflow-hidden border border-black/40 p-1 text-left text-xs leading-tight text-white', COLORS[i % COLORS.length], e.isDir ? 'hover:brightness-125' : 'cursor-default opacity-70')}
@@ -90,7 +91,7 @@ export function Analyzer({ busy, act, ask }: { busy: boolean; act: Act; ask: Ask
   const crumbPath = (i: number) => [view!.root.replace(/\\$/, ''), ...crumbs.slice(0, i + 1)].join('\\');
 
   const Row = ({ e }: { e: DirEntry }) => (
-    <li className="flex items-center gap-3 px-4 py-1.5 text-sm">
+    <li className="flex items-center gap-3 px-4 py-1.5 text-sm" {...pathMenu(e.path)}>
       {e.isDir ? (
         <button className="min-w-0 flex-1 truncate text-left text-sky-300 hover:underline" onClick={() => open(e.path)}>
           {e.name}\

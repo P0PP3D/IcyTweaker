@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import clsx from 'clsx';
 import type { AppState, DnsBenchResult, DnsPreset, HostsError, LatencyResult, NetAdapterView } from '../../shared/types';
-import { Button, TweakRow, type Ask } from '../ui';
+import { Button, TweakRow, type Ask, Loading } from '../ui';
 import { FixCard } from './Fixes';
 import { tweakHandlers, type Act } from './General';
 
@@ -15,7 +15,7 @@ function Dns({ busy, act }: { busy: boolean; act: Act }) {
       <h3 className="text-sm font-semibold uppercase tracking-wide text-slate-400">DNS</h3>
       {info?.error && <p className="text-sm text-rose-300">{info.error}</p>}
       {!info ? (
-        <p className="text-sm text-slate-400">Reading network adapters…</p>
+        <Loading text="Reading network adapters…" />
       ) : info.adapters.length === 0 ? (
         <p className="text-sm text-slate-400">No connected network adapter.</p>
       ) : (

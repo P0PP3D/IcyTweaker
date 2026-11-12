@@ -18,9 +18,10 @@ import { createOverlayFeed } from './games/overlay';
 import { createFroststrap } from './apps/froststrap';
 import { buildConfig, fromShareCode, parseConfig, toShareCode, type ConfigFile } from './system/configfile';
 import { bootInfo } from './system/boot';
+import { listRecycleBin } from './cleaner/recycle';
 import { displayModes, monitors } from './system/monitors';
 import { findDuplicates, findOldFiles, keptOut } from './cleaner/finder';
-import { DEFAULT_FOCUS, FOCUS_APPS, FOCUS_SERVICES, createFocus, validateFocus } from './games/focus';
+import { APPS_SCRIPT, DEFAULT_FOCUS, FOCUS_APPS, FOCUS_SERVICES, createFocus, parseAppChoices, validateFocus } from './games/focus';
 import { createBenchHistory, runBenchmark } from './system/benchmark';
 import { listOldDrivers } from './system/driverstore';
 import { TRACES as PRIVACY_TRACES, createPrivacy } from './cleaner/privacy';
@@ -76,14 +77,26 @@ const showWindow = () => {
   if (!win) return createWindow();
   if (win.isMinimized()) win.restore();
   win.show();
-  win.focus();
+  bringToFront(win);
 };
+
+/**
+ * Windows only lets the app that has the foreground hand it on. After the UAC prompt (or from the tray) that isn't us,
+ * so a plain focus() just flashes the taskbar button. Briefly topmost puts the window in front, then it's normal again.
+ */
+function bringToFront(win: BrowserWindow) {
+  win.setAlwaysOnTop(true);
+  win.focus();
+  app.focus({ steal: true });
+  setTimeout(() => !win.isDestroyed() && win.setAlwaysOnTop(false), 300);
+}
 
 function createWindow(show = true) {
   // Opens at 1440 x 940, or 90% of the screen's work area when that is smaller.
   const area = screen.getPrimaryDisplay().workAreaSize;
   const win = new BrowserWindow({
-    show,
+    show: false, // shown when ready (below), so it opens painted and in front
+
     width: Math.min(1440, Math.round(area.width * 0.9)),
     height: Math.min(940, Math.round(area.height * 0.9)),
     center: true,
@@ -100,6 +113,11 @@ function createWindow(show = true) {
       sandbox: true,
     },
   });
+  if (show)
+    win.once('ready-to-show', () => {
+      win.show();
+      bringToFront(win);
+    });
   win.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
   win.webContents.on('will-navigate', (e) => e.preventDefault());
   win.on('closed', () => {
@@ -179,6 +197,7 @@ app.whenReady().then(async () => {
       build: Number(os.release().split('.')[2]) || 0,
       hardware: engineHw,
       antiCheats,
+      onProgress: (label, done, total, current) => progress({ task: 'bulk', label, done, total, current }),
     });
     const debloater = createDebloater(adapter);
     const services = createServices(adapter, safety);
@@ -330,6 +349,7 @@ app.whenReady().then(async () => {
     // Focus Mode (page and tray): non-essential services stopped and background apps closed until turned off. A session
     // left over from a crash or restart is put back first.
     const focus = createFocus(adapter, safety.dataDir, (a, t, ok, d) => safety.log(a, t, ok, d));
+    let focusAppsCache: { at: number; value: Promise<ReturnType<typeof parseAppChoices>> } | null = null;
     void focus.resume().then((m) => m && notify('Focus Mode', 'Started again what the last Focus Mode session had stopped.'), () => {});
     async function setFocusMode(turnOn: boolean): Promise<{ ok: boolean; message: string }> {
       if (turnOn && live && !admin) return { ok: false, message: 'Focus Mode needs administrator (it stops Windows services). Relaunch as admin first.' };
@@ -951,7 +971,8 @@ app.whenReady().then(async () => {
         if (list.length === 0 || list.some((x) => !x)) return { report: { ok: false, message: 'Invalid request.' }, results: [] };
         if (list.some((x) => x!.risk === 'risky') && confirmed !== true)
           return { report: { ok: false, message: 'Deleting saved passwords is Risky and needs confirmation.' }, results: [] };
-        const procs = await runningProcesses(adapter);
+        // The process list (about a second) only matters for targets whose app must be closed.
+        const procs = list.some((x) => x!.needsClosed) ? await runningProcesses(adapter) : new Set<string>();
         const results: CleanResult[] = [];
         for (const [i, x] of list.entries()) {
           const label = x!.subgroup ? `${x!.subgroup} ${x!.name}` : x!.name;
@@ -1012,6 +1033,20 @@ app.whenReady().then(async () => {
 
       async revealPath(p: unknown) {
         if (typeof p === 'string' && analyzer.inside(p)) shell.showItemInFolder(p);
+      },
+
+      /**
+       * Right-click menu for a file or folder in the cleaner lists: show it in File Explorer, copy its path. Only opens
+       * Explorer (nothing runs or changes). A file that's gone (deleted, in the Recycle Bin) opens its folder instead.
+       */
+      async pathMenu(p: unknown) {
+        if (typeof p !== 'string' || !/^[a-z]:\\/i.test(p) || p.length > 1024) return;
+        const win = mainWindow();
+        const show = () => (existsSync(p) ? shell.showItemInFolder(p) : existsSync(path.dirname(p)) && void shell.openPath(path.dirname(p)));
+        Menu.buildFromTemplate([
+          { label: existsSync(p) ? 'Show in File Explorer' : 'Open folder in File Explorer', click: show },
+          { label: 'Copy path', click: () => clipboard.writeText(p) },
+        ]).popup(win ? { window: win } : {});
       },
 
       async trashPath(p: unknown) {
@@ -1498,6 +1533,18 @@ app.whenReady().then(async () => {
         return { settings: settings.focus, state: focus.state(), services: FOCUS_SERVICES.map(({ name, label, note }) => ({ name, label, note })), apps: FOCUS_APPS.map(({ exe, label }) => ({ exe, label })) };
       },
 
+      /** Read-only listing, kept a minute (the page asks on every visit). */
+      focusApps: () => {
+        if (!focusAppsCache || Date.now() - focusAppsCache.at > 60_000) {
+          const value = adapter
+            .query(POWERSHELL_EXE, ['-NoProfile', '-NonInteractive', '-Command', APPS_SCRIPT], 60_000)
+            .catch(() => '')
+            .then((b64) => parseAppChoices(b64, existsSync, process.env));
+          focusAppsCache = { at: Date.now(), value };
+        }
+        return focusAppsCache.value;
+      },
+
       setFocus: async (on: unknown) => (typeof on === 'boolean' ? setFocusMode(on) : { ok: false, message: 'Invalid request.' }),
 
       /** Official driver download pages, opened in the browser (fixed list; nothing is downloaded by the app). */
@@ -1514,6 +1561,14 @@ app.whenReady().then(async () => {
 
       /** What's in the Recycle Bin (all drives), through the Windows shell. Read-only. */
       async recycleItems() {
+        // Fast path: the $I records on disk (milliseconds). The Shell listing below is the fallback (no SID).
+        if (sid) {
+          try {
+            return { items: await listRecycleBin(drives, sid) };
+          } catch {
+            // fall through to the Shell
+          }
+        }
         const script =
           "$o = @((New-Object -ComObject Shell.Application).NameSpace(10).Items() | ForEach-Object { $d = $_.ExtendedProperty('System.Recycle.DateDeleted'); $s = $_.ExtendedProperty('System.Size'); " +
           "[pscustomobject]@{ name = $_.Name; from = [string]$_.ExtendedProperty('System.Recycle.DeletedFrom'); deleted = $(if ($d) { ([datetime]$d).ToString('yyyy-MM-ddTHH:mm:ss') + 'Z' } else { $null }); size = $(if ($s) { [int64]$s } else { 0 }); folder = [bool]$_.IsFolder } }); " +

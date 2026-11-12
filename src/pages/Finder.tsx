@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import type { DuplicateGroup, OldFile, PrivacySnapshot, PrivacyTraceView, Progress } from '../../shared/types';
 import { Icon } from '../icons';
-import { Button, FeatureCard, ScanAge, formatBytes, type Ask } from '../ui';
+import { Button, FeatureCard, ScanAge, formatBytes, type Ask, Loading, pathMenu } from '../ui';
 import type { Act } from './General';
 
 function RootPicker({ value, onChange }: { value: string; onChange: (v: string) => void }) {
@@ -107,7 +107,7 @@ export function Duplicates({ busy, act, ask }: { busy: boolean; act: Act; ask: A
                   {name(g.files[0].path)} <span className="font-normal text-slate-500">· {formatBytes(g.size)} each · {g.files.length} copies</span>
                 </div>
                 {g.files.map((f) => (
-                  <label key={f.path} className="flex items-center gap-2 text-xs text-slate-400">
+                  <label key={f.path} className="flex items-center gap-2 text-xs text-slate-400" {...pathMenu(f.path)}>
                     <input type="checkbox" className="accent-sky-500" checked={picked.has(f.path)} onChange={(e) => toggle(f.path, e.target.checked)} />
                     <span className="truncate" title={f.path}>
                       {f.path}
@@ -243,7 +243,7 @@ export function OldFiles({ busy, act, ask }: { busy: boolean; act: Act; ask: Ask
                         onChange={(e) => setAll(e.target.checked)}
                       />
                       <Icon name="box" className="h-4 w-4 shrink-0 text-sky-300" />
-                      <span className="truncate font-medium text-slate-100" title={g.dir}>
+                      <span className="truncate font-medium text-slate-100" title={g.dir} {...pathMenu(g.dir)}>
                         {g.label}
                       </span>
                       <span className="ml-auto shrink-0 text-xs text-slate-400">
@@ -252,7 +252,7 @@ export function OldFiles({ busy, act, ask }: { busy: boolean; act: Act; ask: Ask
                     </summary>
                     <ul className="space-y-1 border-t border-[var(--line)] px-3 py-2">
                       {g.files.map((f) => (
-                        <li key={f.path}>
+                        <li key={f.path} {...pathMenu(f.path)}>
                           <label className="flex items-center gap-2 text-xs text-slate-300">
                             <input type="checkbox" checked={picked.has(f.path)} onChange={(e) => setPicked((s) => (e.target.checked ? new Set(s).add(f.path) : new Set([...s].filter((x) => x !== f.path))))} />
                             <span className="truncate" title={f.path}>
@@ -313,7 +313,7 @@ export function Privacy({ busy, act, ask }: { busy: boolean; act: Act; ask: Ask 
         }
       >
         {!traces ? (
-          <p className="text-slate-400">Reading…</p>
+          <Loading text="Reading…" />
         ) : (
           <ul className="space-y-2">
             {traces.map((t) => (

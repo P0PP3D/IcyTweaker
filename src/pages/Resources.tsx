@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import clsx from 'clsx';
 import type { AppState, BenchResult, DriverBackupView, DriverInfo, DriverJobView, DriverLatency, LatencyCheck, ToolStatus, Progress, RuntimeResult, RuntimeView, ShortcutView, SystemCheckStep } from '../../shared/types';
 import { Icon } from '../icons';
-import { Badge, Button, CheckList, FeatureCard, MUTED_BADGE, Tabs, formatBytes, type Ask } from '../ui';
+import { Badge, Button, CheckList, FeatureCard, MUTED_BADGE, Tabs, formatBytes, type Ask, Loading } from '../ui';
 import type { Act } from './General';
 
 function DriverReinstall({ busy, act, ask, onJob }: { busy: boolean; act: Act; ask: Ask; onJob: (j: DriverJobView | null) => void }) {
@@ -521,7 +521,7 @@ function StandbyMemory({ busy, act }: { busy: boolean; act: Act }) {
       }
     >
       {!m ? (
-        <p className="text-sm text-slate-400">Reading…</p>
+        <Loading text="Reading…" />
       ) : 'error' in m ? (
         <p className="text-sm text-amber-300">{m.error}</p>
       ) : (

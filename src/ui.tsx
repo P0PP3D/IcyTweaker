@@ -53,6 +53,8 @@ export function Button({
             : 'bg-white/[0.04] text-slate-200 ring-1 ring-white/10 hover:bg-white/[0.08]',
       )}
     >
+      {/* A label like "Scanning…" means it's working: show it moving. */}
+      {typeof children === 'string' && children.endsWith('…') && <span className="h-3.5 w-3.5 shrink-0 animate-spin rounded-full border-2 border-current/25 border-t-current" aria-hidden />}
       {children}
     </button>
   );
@@ -470,6 +472,24 @@ export function ago(iso: string, now = Date.now()) {
   const h = Math.round(m / 60);
   if (h < 48) return `${h} h ago`;
   return `${Math.round(h / 24)} days ago`;
+}
+
+/** Spread on a row showing a file or folder: right-click opens Show in File Explorer / Copy path. */
+export const pathMenu = (path: string) => ({
+  onContextMenu: (e: { preventDefault: () => void }) => {
+    e.preventDefault();
+    void window.api.pathMenu(path);
+  },
+});
+
+/** Spinner + text for anything still loading. Always moves (no motion-safe): it says the app is working. */
+export function Loading({ text, className }: { text: string; className?: string }) {
+  return (
+    <p role="status" className={clsx('flex items-center gap-2 text-sm text-slate-400', className)}>
+      <span className="h-4 w-4 shrink-0 animate-spin rounded-full border-2 border-sky-500/25 border-t-sky-400" aria-hidden />
+      {text}
+    </p>
+  );
 }
 
 /** When the shown result was scanned, e.g. "Last scan 2 h ago". */

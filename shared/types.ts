@@ -646,11 +646,13 @@ export interface ActionReport {
 
 /** Progress of a long task. For 'analyze', done = files scanned and total = 0 (unknown). */
 export interface Progress {
-  task: 'uninstall' | 'scan' | 'clean' | 'analyze' | 'system-check' | 'runtimes' | 'net-test' | 'driver' | 'frametime' | 'find' | 'update' | 'restore-point' | 'restart' | 'benchmark' | 'drivers';
+  task: 'uninstall' | 'scan' | 'clean' | 'analyze' | 'system-check' | 'runtimes' | 'net-test' | 'driver' | 'frametime' | 'find' | 'update' | 'restore-point' | 'restart' | 'benchmark' | 'drivers' | 'bulk';
   done: number;
   total: number;
   current: string;
   bytes?: number;
+  /** 'bulk': what is being applied (e.g. the preset's name). */
+  label?: string;
 }
 
 /** Cleaner risk: safe regenerates, caution loses something you may notice, risky loses data. */
@@ -832,6 +834,8 @@ export interface OptimizerApi {
   cancelAnalyze(): Promise<void>;
   /** Show a file of the last analysis in File Explorer. */
   revealPath(path: string): Promise<void>;
+  /** Right-click menu for a path: Show in File Explorer, Copy path. */
+  pathMenu(path: string): Promise<void>;
   /** Move a file of the last analysis to the Recycle Bin. */
   trashPath(path: string): Promise<ActionReport>;
   driveHealth(): Promise<{ drives: DriveInfo[]; error?: string }>;
@@ -957,6 +961,8 @@ export interface OptimizerApi {
   benchmarks(): Promise<BenchResult[]>;
   focusInfo(): Promise<FocusInfo>;
   setFocusSettings(s: FocusSettings): Promise<FocusInfo>;
+  /** The user's apps for the Focus Mode pickers, and which built-in "apps to close" this PC has. */
+  focusApps(): Promise<{ choices: Array<{ exe: string; name: string }>; installed: string[] }>;
   /** Turn Focus Mode on or off. */
   setFocus(on: boolean): Promise<ActionReport>;
   /** Everything in the Recycle Bin, newest deleted first. */

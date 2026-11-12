@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import clsx from 'clsx';
 import type { AppState, AuditItem, HardwareInfo, TweakView } from '../../shared/types';
-import { Badge, Button, MUTED_BADGE, TweakRow, formatBytes, type Ask } from '../ui';
+import { Badge, Button, MUTED_BADGE, TweakRow, formatBytes, type Ask, Loading } from '../ui';
 import type { Act } from './General';
 
 type HwResult = Awaited<ReturnType<typeof window.api.hardware>>;
@@ -138,7 +138,7 @@ export function Bios({ busy, act }: { busy: boolean; act: Act }) {
       )}
       {res?.error && <p className="text-sm text-rose-300">{res.error}</p>}
       {!res ? (
-        <p className="text-sm text-slate-400">Reading firmware information…</p>
+        <Loading text="Reading firmware information…" />
       ) : (
         <ul className="space-y-2">
           {res.audit.map((a) => (
