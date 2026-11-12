@@ -47,10 +47,13 @@ jobs:
           gh api "repos/$GITHUB_REPOSITORY/releases?per_page=100" \
             --jq ".[] | select(.tag_name == \"$GITHUB_REF_NAME\" or ((.assets | length) == 1 and (.assets[0].name | endswith(\".blockmap\")))) | .id" |
             while read -r id; do echo "Removing old release $id"; gh api -X DELETE "repos/$GITHUB_REPOSITORY/releases/$id"; done
+          # Description: this version's section of CHANGELOG.md, plus how to install.
+          awk -v h="## v$v" '$0 == h { f = 1; next } /^## v/ { f = 0 } f' CHANGELOG.md > notes.md
+          [ -s notes.md ] || echo "::warning::CHANGELOG.md has no section for v$v"
+          printf '\n**Install:** download **IcyTweaker-Setup-%s.exe** below and run it. Installed copies update themselves.\n' "$v" >> notes.md
           gh release create "$GITHUB_REF_NAME" \
             "release/IcyTweaker-Setup-$v.exe" "release/IcyTweaker-Setup-$v.exe.blockmap" "release/latest.yml" \
-            --repo "$GITHUB_REPOSITORY" --title "IcyTweaker $v" --latest \
-            --notes "Download **IcyTweaker-Setup-$v.exe** below and run it. Installed copies update themselves."
+            --repo "$GITHUB_REPOSITORY" --title "IcyTweaker v$v" --latest --notes-file notes.md
 
       - name: Check the release has all three files
         shell: bash

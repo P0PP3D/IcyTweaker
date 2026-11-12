@@ -1,0 +1,29 @@
+# Keeps every GitHub release's title ("IcyTweaker vX.Y.Z") and description in step with CHANGELOG.md.
+# Runs when CHANGELOG.md changes on main (or by hand from the Actions tab). Releases that don't exist yet are skipped.
+name: Release notes
+
+on:
+  push:
+    branches: [main]
+    paths: ['CHANGELOG.md']
+  workflow_dispatch:
+
+permissions:
+  contents: write # edit releases
+
+jobs:
+  notes:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Update release titles and descriptions
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          for v in $(grep -oP '^## v\K[0-9][0-9.]*' CHANGELOG.md); do
+            if ! gh release view "v$v" --repo "$GITHUB_REPOSITORY" > /dev/null 2>&1; then echo "v$v: no release, skipped"; continue; fi
+            awk -v h="## v$v" '$0 == h { f = 1; next } /^## v/ { f = 0 } f' CHANGELOG.md > notes.md
+            gh release edit "v$v" --repo "$GITHUB_REPOSITORY" --title "IcyTweaker v$v" --notes-file notes.md
+            echo "v$v: updated"
+          done
