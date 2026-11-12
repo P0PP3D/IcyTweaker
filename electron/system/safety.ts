@@ -152,12 +152,15 @@ export async function createSafety(adapter: SystemAdapter, dataDir: string, { re
   let lastRestorePoint = resume ? await readFile(rpFile, 'utf8').then((t) => Number(JSON.parse(t).at) || 0, () => 0) : 0;
 
   /** Windows restore point via Checkpoint-Computer. Throws if it fails. */
+  const hooks = { activity: (_task: 'restore-point' | 'restart', _active: boolean) => {} };
+
   async function restorePoint(description: string, force = false) {
     const desc = description.replace(/'/g, "''");
     if (!force && Date.now() - lastRestorePoint < rpWindow) {
       await log('restore-point', description, true, `covered by the restore point from ${new Date(lastRestorePoint).toLocaleString()} (Windows makes one per 24 h)`);
       return;
     }
+    hooks.activity('restore-point', true);
     try {
       const { stdout, stderr } = await adapter.exec(POWERSHELL_EXE, [
         '-NoProfile',
@@ -172,6 +175,8 @@ export async function createSafety(adapter: SystemAdapter, dataDir: string, { re
     } catch (err) {
       await log('restore-point', description, false, (err as Error).message);
       throw err;
+    } finally {
+      hooks.activity('restore-point', false);
     }
   }
 
@@ -180,6 +185,7 @@ export async function createSafety(adapter: SystemAdapter, dataDir: string, { re
     try {
       await adapter.exec(SHUTDOWN_EXE, ['/r', '/t', '5', '/c', 'IcyCleaner: restarting to finish applying tweaks']);
       await log('restart', 'windows', true, adapter.live ? undefined : 'dry-run: not restarted');
+      hooks.activity('restart', true);
     } catch (err) {
       await log('restart', 'windows', false, (err as Error).message);
       throw err;
@@ -227,5 +233,7 @@ export async function createSafety(adapter: SystemAdapter, dataDir: string, { re
     changedRefs,
     savedAt,
     backupCount: () => Object.keys(backup).length,
+    /** Set by main to show "Creating a restore point…" / "Restarting…" in the window. */
+    hooks,
   };
 }

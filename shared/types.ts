@@ -561,6 +561,7 @@ export type GameFlag =
   | 'aoOff'
   | 'bloomOff'
   | 'motionBlurOff'
+  | 'noLetterbox'
   | 'dofOff';
 
 /** What a profile sets. Fields left out are not touched. aa / reflex = index into the game's choices. */
@@ -616,7 +617,7 @@ export interface ActionReport {
 
 /** Progress of a long task. For 'analyze', done = files scanned and total = 0 (unknown). */
 export interface Progress {
-  task: 'uninstall' | 'scan' | 'clean' | 'analyze' | 'system-check' | 'runtimes' | 'net-test' | 'driver' | 'frametime' | 'find' | 'update';
+  task: 'uninstall' | 'scan' | 'clean' | 'analyze' | 'system-check' | 'runtimes' | 'net-test' | 'driver' | 'frametime' | 'find' | 'update' | 'restore-point' | 'restart';
   done: number;
   total: number;
   current: string;

@@ -57,6 +57,53 @@ function TitleBar({ crumb }: { crumb: string }) {
   );
 }
 
+/** Full-window status while Windows makes a restore point or is about to restart (both can take a while). */
+function Activity() {
+  const [task, setTask] = useState<'restore-point' | 'restart' | null>(null);
+  const [left, setLeft] = useState(5);
+  useEffect(
+    () =>
+      window.api.onProgress((p) => {
+        if (p.task !== 'restore-point' && p.task !== 'restart') return;
+        setTask(p.current ? p.task : null);
+        if (p.task === 'restart') setLeft(5);
+      }),
+    [],
+  );
+  useEffect(() => {
+    if (task !== 'restart') return;
+    // shutdown /t 5. If the window is still here well after that (dry-run, or the restart was stopped), let go.
+    const t = setInterval(() => setLeft((n) => n - 1), 1000);
+    const done = setTimeout(() => setTask(null), 9000);
+    return () => {
+      clearInterval(t);
+      clearTimeout(done);
+    };
+  }, [task]);
+  if (!task) return null;
+  const rp = task === 'restore-point';
+  return (
+    <div role="alertdialog" aria-live="assertive" aria-label={rp ? 'Creating a restore point' : 'Restarting Windows'} className="fixed inset-0 z-50 grid place-items-center bg-black/60 backdrop-blur-sm motion-safe:animate-[fadein_.2s_ease-out]">
+      <div className="w-[min(26rem,calc(100vw-2rem))] rounded-2xl bg-[var(--panel)] p-6 text-center shadow-2xl ring-1 ring-[var(--line)]">
+        <div className="relative mx-auto mb-4 h-16 w-16">
+          <div className="absolute inset-0 rounded-full border-4 border-sky-500/20" />
+          <div className="absolute inset-0 rounded-full border-4 border-transparent border-t-sky-400 motion-safe:animate-spin" />
+          <div className="absolute inset-0 grid place-items-center text-xl font-semibold text-sky-300">{rp ? '' : Math.max(left, 0)}</div>
+        </div>
+        <div className="text-lg font-semibold text-slate-100">{rp ? 'Creating a restore point…' : left > 0 ? `Restarting in ${left}…` : 'Restarting…'}</div>
+        <p className="mt-1 text-sm text-slate-400">
+          {rp ? 'Windows is saving a snapshot of your system settings. This usually takes under a minute; please keep IcyCleaner open.' : 'Save your work now. Windows will close your apps and restart.'}
+        </p>
+        {rp && (
+          <div className="mt-4 h-1.5 overflow-hidden rounded-full bg-white/10">
+            <div className="h-full w-1/3 rounded-full bg-sky-400 motion-safe:animate-[slide_1.4s_ease-in-out_infinite]" />
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 export function App() {
   const [state, setState] = useState<AppState | null>(null);
   const [busy, setBusy] = useState(false);
@@ -198,6 +245,7 @@ export function App() {
 
   return (
     <div className="flex h-screen text-slate-200">
+      <Activity />
       <aside className={clsx('sidebar-glow flex shrink-0 flex-col overflow-hidden transition-[width] duration-200', collapsed ? 'w-[72px]' : 'w-64')}>
         <div className="drag flex h-14 shrink-0 items-center justify-between gap-2 px-4">
           <div className="flex min-w-0 items-center gap-2.5">

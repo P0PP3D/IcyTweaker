@@ -26,6 +26,50 @@ const ART: Record<string, { src: string; kind: 'cover' } | { src: string; kind: 
   roblox: { src: robloxLogo, kind: 'logo', bg: 'from-[#1f2937] to-[#3f4b5c]', invert: true },
 };
 
+/** Resolutions competitive players use. 4:3 / 16:10 on a 16:9 screen = "stretched" when the GPU scales to full screen. */
+const RES_PRESETS: Array<{ w: number; h: number; tag: string }> = [
+  { w: 1920, h: 1080, tag: '16:9' },
+  { w: 1600, h: 900, tag: '16:9' },
+  { w: 1728, h: 1080, tag: '16:10 stretched' },
+  { w: 1680, h: 1050, tag: '16:10 stretched' },
+  { w: 1440, h: 1080, tag: '4:3 stretched' },
+  { w: 1280, h: 960, tag: '4:3 stretched' },
+  { w: 1024, h: 768, tag: '4:3 stretched' },
+  { w: 1280, h: 1024, tag: '5:4 stretched' },
+];
+
+function ResolutionPresets({ width, height, onPick, disabled }: { width?: number; height?: number; onPick: (w: number, h: number) => void; disabled: boolean }) {
+  // The main display's real pixels (devicePixelRatio undoes Windows scaling).
+  const native = { w: Math.round(window.screen.width * window.devicePixelRatio), h: Math.round(window.screen.height * window.devicePixelRatio), tag: 'your screen' };
+  const list = [native, ...RES_PRESETS.filter((p) => p.w !== native.w || p.h !== native.h)];
+  const stretched = width && height && Math.abs(width / height - native.w / native.h) > 0.02;
+  return (
+    <div className="space-y-1.5">
+      <div className="flex flex-wrap gap-1.5" role="group" aria-label="Resolution presets">
+        {list.map((p) => {
+          const on = p.w === width && p.h === height;
+          return (
+            <button
+              key={`${p.w}x${p.h}`}
+              disabled={disabled}
+              onClick={() => onPick(p.w, p.h)}
+              aria-pressed={on}
+              className={clsx('rounded-md px-2 py-1 text-xs ring-1 transition', on ? 'bg-sky-500/20 text-sky-200 ring-sky-500/50' : 'bg-white/5 text-slate-300 ring-white/10 hover:bg-white/10')}
+            >
+              {p.w}×{p.h} <span className="text-slate-500">{p.tag}</span>
+            </button>
+          );
+        })}
+      </div>
+      {stretched && (
+        <p className="text-xs text-slate-400">
+          Stretched: also turn on Fullscreen below, and in NVIDIA Control Panel → Adjust desktop size and position pick <b>Full-screen</b> with scaling on <b>GPU</b> (AMD: GPU Scaling on, Full panel). Otherwise you get black bars.
+        </p>
+      )}
+    </div>
+  );
+}
+
 /** Wide game artwork: list thumbnails (small) and the editor banner (large). */
 function GameArt({ id, name, large }: { id: string; name: string; large?: boolean }) {
   const art = ART[id];
@@ -54,6 +98,7 @@ const FLAG_LABEL: Record<GameFlag, string> = {
   aoOff: 'Disable Ambient Occlusion',
   bloomOff: 'Disable Bloom',
   motionBlurOff: 'Disable Motion Blur',
+  noLetterbox: 'Fill the screen (no black bars, for stretched)',
   dofOff: 'Disable Depth of Field',
 };
 
@@ -555,6 +600,7 @@ function Editor({ g, icon, busy, act, ask, reload }: { g: GameView; icon?: strin
             )}
             {g.supports.fps && input('Max FPS (0 = unlimited)', v.fps, (n) => set({ fps: n }))}
           </div>
+          {g.supports.resolution && <ResolutionPresets width={v.width} height={v.height} onPick={(width, height) => set({ width, height })} disabled={busy} />}
           {g.supports.fps && (
             <div className="flex items-center gap-3">
               <input
@@ -916,8 +962,11 @@ export function Games({ busy, act, ask }: { busy: boolean; act: Act; ask: Ask })
             </>
           )}
         </div>
-        {libSelected && <LibraryPanel key={libSelected.id} g={libSelected} icon={libIcons[libSelected.id]} busy={busy} act={act} />}
-        {current && <Editor key={`${current.id}:${JSON.stringify(current.current)}`} g={current} icon={icons[current.id]} busy={busy} act={act} ask={ask} reload={load} />}
+        {/* Sticky: the chosen game's settings stay in view however far down the list it was picked. */}
+        <div className="min-w-0 md:sticky md:top-2 md:max-h-[calc(100vh-5rem)] md:self-start md:overflow-y-auto md:pr-1">
+          {libSelected && <LibraryPanel key={libSelected.id} g={libSelected} icon={libIcons[libSelected.id]} busy={busy} act={act} />}
+          {current && <Editor key={`${current.id}:${JSON.stringify(current.current)}`} g={current} icon={icons[current.id]} busy={busy} act={act} ask={ask} reload={load} />}
+        </div>
       </div>
     </section>
   );

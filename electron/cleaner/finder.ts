@@ -7,6 +7,15 @@ import { open, stat } from 'node:fs/promises';
 import type { DuplicateGroup, OldFile } from '../../shared/types';
 import { walk } from './walk';
 
+/**
+ * Folders whose files are never offered by the Duplicate Finder or Old Files, on any drive: games (identical DLLs and
+ * rarely-touched .pak files are normal there), installed programs, app data, and Windows' own folders. Deleting a
+ * "duplicate" or "old" file there breaks the game or app.
+ */
+const KEEP_OUT =
+  /\\(steamapps|steamlibrary|riot games|epic games|xboxgames|gog games|ubisoft game launcher|ea games|battle\.net|program files( \(x86\))?|programdata|windowsapps|appdata|windows|\$recycle\.bin|system volume information|recovery|\$windows\.~bt|\$windows\.~ws|\.git|node_modules)(\\|$)/i;
+export const keptOut = (p: string) => KEEP_OUT.test(p.replace(/\//g, '\\'));
+
 async function headHash(file: string): Promise<string | null> {
   const fh = await open(file, 'r').catch(() => null);
   if (!fh) return null;

@@ -3,6 +3,8 @@
 import { mkdir, rm } from 'node:fs/promises';
 import path from 'node:path';
 import { afterAll, describe, expect, it } from 'vitest';
+import { isTempDir } from './cleaner/cleaner';
+import { keptOut } from './cleaner/finder';
 import { getKey, setKey } from './games/config';
 import { createBoost, DEFAULT_BOOST, validateBoost } from './games/boost';
 import { gameProfiles } from './games/profiles';
@@ -84,6 +86,27 @@ describe('Game Boost display mode', () => {
     await boost.tick();
     expect(script().at(-1)).toMatch(/::Reset\(\)/);
     expect(script()).toHaveLength(2);
+  });
+});
+
+describe('cleaner safety', () => {
+  it('the duplicate / old-file finders keep out of games, programs and app data on any drive', () => {
+    for (const p of [
+      'D:\\SteamLibrary\\steamapps\\common\\Game\\x.dll',
+      'C:\\Riot Games\\VALORANT\\live\\a.pak',
+      'E:\\XboxGames\\Halo\\Content\\b.pak',
+      'C:\\Users\\Me\\AppData\\Local\\Discord\\app-1.0.9\\c.dll',
+      'D:\\Program Files\\Tool\\d.exe',
+      'C:\\Users\\Me\\code\\proj\\node_modules\\e.js',
+      'C:/Users/Me/AppData/Roaming/x',
+    ])
+      expect(keptOut(p), p).toBe(true);
+    for (const p of ['C:\\Users\\Me\\Videos\\clip.mp4', 'D:\\Downloads\\setup.iso', 'C:\\Users\\Me\\Documents\\Programs list.txt']) expect(keptOut(p), p).toBe(false);
+  });
+  it('the Temp target only runs on a real Temp folder', () => {
+    expect(isTempDir('C:\\Users\\Me\\AppData\\Local\\Temp')).toBe(true);
+    expect(isTempDir('D:\\tmp\\')).toBe(true);
+    expect(isTempDir('C:\\Users\\Me\\Documents')).toBe(false);
   });
 });
 

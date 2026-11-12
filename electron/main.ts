@@ -19,7 +19,7 @@ import { createFroststrap } from './apps/froststrap';
 import { buildConfig, fromShareCode, parseConfig, toShareCode, type ConfigFile } from './system/configfile';
 import { bootInfo } from './system/boot';
 import { displayModes, monitors } from './system/monitors';
-import { findDuplicates, findOldFiles } from './cleaner/finder';
+import { findDuplicates, findOldFiles, keptOut } from './cleaner/finder';
 import { TRACES as PRIVACY_TRACES, createPrivacy } from './cleaner/privacy';
 import { restoreDefender } from './system/uninstall';
 import { createDriverJob, driverInfo } from './resources/driver';
@@ -179,6 +179,7 @@ app.whenReady().then(async () => {
     let adapterList: NetAdapterView[] = []; // from the last networkInfo(); only these get DNS changes
     const removedFile = path.join(safety.dataDir, 'removed-apps.jsonl');
     const progress = (p: Progress) => mainWindow()?.webContents.send('progress', p);
+    safety.hooks.activity = (task, active) => progress({ task, done: 0, total: 0, current: active ? task : '' });
 
     // Cleaner environment. Recycle Bin folders are per user SID; Steam may be installed anywhere.
     const env = process.env;
@@ -1295,7 +1296,7 @@ app.whenReady().then(async () => {
         findCancelled = false;
         try {
           const groups = await findDuplicates(root, {
-            skip: (p) => isProtected(p) || !!adapter.isRemoved?.(p),
+            skip: (p) => isProtected(p) || keptOut(p) || !!adapter.isRemoved?.(p),
             cancelled: () => findCancelled,
             onProgress: (done, current) => progress({ task: 'find', done, total: 0, current }),
           });
@@ -1312,7 +1313,7 @@ app.whenReady().then(async () => {
         if (typeof root !== 'string' || !analyzeRoots.includes(root) || !Number.isInteger(days) || (days as number) < 30) return { files: [], error: 'Invalid request.' };
         findCancelled = false;
         try {
-          const files = await findOldFiles(root, { days: days as number, skip: (p) => isProtected(p) || !!adapter.isRemoved?.(p), cancelled: () => findCancelled });
+          const files = await findOldFiles(root, { days: days as number, skip: (p) => isProtected(p) || keptOut(p) || !!adapter.isRemoved?.(p), cancelled: () => findCancelled });
           foundPaths = new Set(files.map((f) => path.resolve(f.path).toLowerCase()));
           return { files };
         } catch (err) {
@@ -1324,7 +1325,7 @@ app.whenReady().then(async () => {
 
       async trashFound(paths: unknown) {
         const list = Array.isArray(paths) ? paths : [];
-        if (list.length === 0 || list.some((p) => typeof p !== 'string' || !foundPaths.has(path.resolve(p).toLowerCase()) || isProtected(p))) return { ok: false, message: 'Invalid request.' };
+        if (list.length === 0 || list.some((p) => typeof p !== 'string' || !foundPaths.has(path.resolve(p).toLowerCase()) || isProtected(p) || keptOut(p))) return { ok: false, message: 'Invalid request.' };
         const failed: string[] = [];
         for (const p of list as string[]) {
           try {
@@ -1479,7 +1480,21 @@ app.whenReady().then(async () => {
         if (!t) return { ok: false, message: `${p.name} isn't installed.` };
         try {
           if ('url' in t) await shell.openExternal(t.url);
-          else spawn(t.exe, t.args, { detached: true, stdio: 'ignore', cwd: path.dirname(t.exe) }).on('error', () => {}).unref();
+          else if (admin) {
+            // The installed app runs as administrator, and a launcher started from it would be too. An elevated Riot
+            // Client can't hand the launch to the one already running (different integrity level), so only the client
+            // window shows. runas /trustlevel:0x20000 starts it as a normal (unelevated) user process instead.
+            // verify: Valorant through Riot Client on a PC where Riot Client is already open.
+            const cmd = [`"${t.exe}"`, ...t.args].join(' '); // args are built by launchTarget only (no quotes)
+            spawn(path.join(sysRoot, 'System32', 'runas.exe'), ['/trustlevel:0x20000', `"${cmd.replace(/"/g, '\\"')}"`], {
+              detached: true,
+              stdio: 'ignore',
+              cwd: path.dirname(t.exe),
+              windowsVerbatimArguments: true,
+            })
+              .on('error', () => {})
+              .unref();
+          } else spawn(t.exe, t.args, { detached: true, stdio: 'ignore', cwd: path.dirname(t.exe) }).on('error', () => {}).unref();
           await safety.log('game-launch', p.id, true, 'url' in t ? t.url : t.exe);
           return { ok: true, message: `Starting ${p.name}…` };
         } catch (err) {

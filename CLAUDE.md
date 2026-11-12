@@ -5,7 +5,7 @@ Full spec: `docs/SPEC.md`. Work one phase of its "Build order" at a time.
 
 ## Hard rules
 
-1. **Every tweak needs a working revert** and an **apply â†’ detect applied â†’ revert â†’ detect original restored** test
+1. **Every tweak needs a working revert** and an **apply → detect applied → revert → detect original restored** test
    in `electron/tweaks.test.ts` (fake registry via `memoryAdapter()`), including the case where the value was absent before.
 2. **Restore point before every bulk change** (Apply All, Revert All, Undo All, presets, anything touching many items).
    If the restore point fails, change nothing.
@@ -168,5 +168,9 @@ Full spec: `docs/SPEC.md`. Work one phase of its "Build order" at a time.
   Win32_Process samples 2 s apart, at most once a minute) -> `SessionReport.stutters`.
 - Config format `colon` (`key:value`, Minecraft options.txt). Profiles from real files on the dev PC: Minecraft,
   Dead by Daylight (its ini is Diff=true: quality groups only), The Outlast Trials. Repo: github.com/P0PP3D/IcyTweaker.
+- Cleaner safety: `finder.ts` `keptOut` (games, Program Files, AppData, Windows folders on any drive) is skipped by
+  Duplicate Finder / Old Files; `cleaner.ts` `isTempDir` (user-temp only cleans a folder named Temp/Tmp).
+- Restore point / restart status: `safety.hooks.activity` -> progress task 'restore-point' / 'restart' -> App `Activity`.
+  Game launches from the elevated app go through `runas /trustlevel:0x20000` (unelevated; Riot Client needs it).
 - Hardware detection (~9 s) is cached in `hardware.json` (userData) and refreshed in the background. Start-up reads
   must run in parallel (sequential awaits defeat the batched reads).

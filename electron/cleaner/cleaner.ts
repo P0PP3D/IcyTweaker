@@ -43,10 +43,13 @@ const t = (x: Omit<CleanTarget, 'requiresAdmin' | 'defaultSelected' | 'needsClos
 });
 const shaderNote = 'Games rebuild these shaders, so the first launch of each game afterwards may stutter briefly.';
 
+/** %TEMP% comes from the environment: only clean it when it really is a Temp folder (not, say, Documents). */
+export const isTempDir = (dir: string) => /^(temp|tmp)$/i.test(path.basename(path.resolve(dir)));
+
 function systemTargets(e: Env): CleanTarget[] {
   const W = e.SystemRoot;
   return [
-    t({ id: 'user-temp', group: 'system', name: 'Your temporary files', description: 'Files apps left in your Temp folder. Files changed in the last 24 hours are kept.', roots: [e.TEMP], minAgeHours: DAY_HOURS }),
+    t({ id: 'user-temp', group: 'system', name: 'Your temporary files', description: 'Files apps left in your Temp folder. Files changed in the last 24 hours are kept.', roots: isTempDir(e.TEMP) ? [e.TEMP] : [], minAgeHours: DAY_HOURS }),
     t({ id: 'windows-temp', group: 'system', name: 'Windows temporary files', description: 'Files left in the Windows Temp folder. Files changed in the last 24 hours are kept.', roots: [path.join(W, 'Temp')], minAgeHours: DAY_HOURS, requiresAdmin: true }),
     t({ id: 'thumbnail-cache', group: 'system', name: 'Thumbnail cache', description: 'Picture and video previews in File Explorer. Rebuilt as you browse folders.', roots: [path.join(e.LOCALAPPDATA, 'Microsoft', 'Windows', 'Explorer')], match: /^thumbcache_.*\.db$/i, depth: 0 }),
     t({ id: 'icon-cache', group: 'system', name: 'Icon cache', description: 'Cached app and file icons. Icons may look blank until Explorer restarts or you sign out.', risk: 'caution', roots: [path.join(e.LOCALAPPDATA, 'Microsoft', 'Windows', 'Explorer')], match: /^iconcache_.*\.db$/i, depth: 0 }),

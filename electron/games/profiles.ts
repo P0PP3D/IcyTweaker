@@ -116,7 +116,8 @@ export const gameProfiles: GameProfile[] = [
     icon: ['{riot:valorant}\\VALORANT.exe', 'C:\\Riot Games\\VALORANT\\live\\VALORANT.exe'],
     files: { gus: { path: '%LOCALAPPDATA%\\VALORANT\\Saved\\Config\\*\\WindowsClient\\GameUserSettings.ini', format: 'ini' } },
     resolution: val.resolution,
-    flags: val.flags,
+    // Letterbox keys read from the dev PC's real file (2026-11): True = 4:3 shows with black bars.
+    flags: { ...val.flags, noLetterbox: [[val.k('bShouldLetterbox'), 'False'], [val.k('bLastConfirmedShouldLetterbox'), 'False']] },
     recommended: { flags: ['fullscreen', 'vsyncOff', 'dynResOff', 'hdrOff', 'lowEffects', 'shadowsOff', 'lowDetail'] },
   },
   {
