@@ -193,6 +193,18 @@ export interface SystemCheckStep {
   summary: string;
 }
 
+/** A GPU maker's own driver app (NVIDIA App, AMD Software, Intel Graphics Software). */
+export interface GpuAppView {
+  vendor: 'NVIDIA' | 'AMD' | 'Intel';
+  /** The installed app's name, or the app to get. */
+  app: string;
+  installed: boolean;
+  /** This PC has a graphics card from this maker. */
+  yours: boolean;
+  /** Where to click to update drivers in it. */
+  how: string;
+}
+
 export interface ShortcutView {
   id: string;
   name: string;
@@ -808,6 +820,10 @@ export interface OptimizerApi {
   /** Asks for confirmation in a native dialog, then restarts Windows. */
   restart(): Promise<ActionReport>;
   completeOnboarding(): Promise<void>;
+  /** This app version, and the last version whose "What's new" was seen. */
+  whatsNew(): Promise<{ current: string; seen: string | null }>;
+  /** Marks this version's "What's new" as seen. */
+  markSeen(): Promise<void>;
   getStats(): Promise<Stats>;
   /** Risky fixes need confirmed: true. */
   runFix(id: string, confirmed?: boolean): Promise<ActionReport>;
@@ -852,6 +868,10 @@ export interface OptimizerApi {
   saveHosts(content: string): Promise<{ report: ActionReport; errors: HostsError[] }>;
   runSystemCheck(): Promise<{ report: ActionReport; steps: SystemCheckStep[] }>;
   shortcuts(): Promise<ShortcutView[]>;
+  /** Each GPU maker's driver app: installed or not, and whether this PC has that maker's GPU. */
+  gpuApps(): Promise<GpuAppView[]>;
+  /** Opens that maker's driver app, or its official download page when it isn't installed. */
+  openGpuApp(vendor: string): Promise<ActionReport>;
   openShortcut(id: string): Promise<ActionReport>;
   listGames(): Promise<GameView[]>;
   /** Game id -> icon (PNG data URL) read from the installed game's own .exe; null when not installed. */

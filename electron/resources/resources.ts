@@ -70,6 +70,58 @@ export async function runSystemCheck(adapter: SystemAdapter, onStep: (i: number,
   return results;
 }
 
+/**
+ * Each GPU maker's own driver app: where its drivers are updated. Found by its Start-menu name (desktop and Store
+ * apps alike, so no install path is guessed) and opened like the Start menu does; not installed = its official page.
+ * NVIDIA App's Start-menu id read on the dev PC (com.nvidia.nvapp); AMD / Intel names from their current apps.
+ */
+export const GPU_APPS: Array<{ vendor: GpuVendor; app: string; match: RegExp; page: string; how: string }> = [
+  {
+    vendor: 'NVIDIA',
+    app: 'NVIDIA App',
+    match: /^NVIDIA App$|^GeForce Experience$/i,
+    page: 'https://www.nvidia.com/en-us/software/nvidia-app/',
+    how: 'Drivers tab: Check for updates, then Download and Express Installation.',
+  },
+  {
+    vendor: 'AMD',
+    app: 'AMD Software: Adrenalin Edition',
+    match: /^AMD Software|^Radeon Software/i,
+    page: 'https://www.amd.com/en/support/download/drivers.html',
+    how: 'Home: Check for Updates, then Download and install.',
+  },
+  {
+    vendor: 'Intel',
+    app: 'Intel Graphics Software',
+    match: /^Intel® Graphics Software|^Intel\(R\) Graphics Software|^Intel® Arc Control|^Intel® Driver & Support Assistant/i,
+    page: 'https://www.intel.com/content/www/us/en/support/detect.html',
+    how: 'Intel Graphics Software, or Intel Driver & Support Assistant, which checks every Intel driver.',
+  },
+];
+export type GpuVendor = 'NVIDIA' | 'AMD' | 'Intel';
+
+/** Start-menu apps (read-only): name and app id, base64 UTF-8 JSON (names carry ® and other characters). */
+export const START_APPS_SCRIPT =
+  '$a = @(Get-StartApps | ForEach-Object { [pscustomobject]@{ name = $_.Name; id = $_.AppID } }); [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes((ConvertTo-Json -InputObject $a -Compress)))';
+
+/** START_APPS_SCRIPT output -> each vendor's installed driver app (its Start-menu name and id), if any. */
+export function findGpuApps(b64: string): Partial<Record<GpuVendor, { name: string; id: string }>> {
+  let list: Array<{ name?: unknown; id?: unknown }> = [];
+  try {
+    const v = JSON.parse(Buffer.from(b64.trim(), 'base64').toString('utf8'));
+    list = Array.isArray(v) ? v : v ? [v] : [];
+  } catch {
+    // none found
+  }
+  const out: Partial<Record<GpuVendor, { name: string; id: string }>> = {};
+  for (const g of GPU_APPS) {
+    // The id goes into a shell:AppsFolder path: only plain app-id characters.
+    const hit = list.find((a) => typeof a.name === 'string' && typeof a.id === 'string' && g.match.test(a.name) && /^[\w.!{}\\ -]{1,200}$/.test(a.id));
+    if (hit) out[g.vendor] = { name: hit.name as string, id: hit.id as string };
+  }
+  return out;
+}
+
 /** Windows tools. Opening one changes nothing by itself; "Go to BIOS" restarts the PC and asks first. */
 export const SHORTCUTS: Array<ShortcutView & { open: { exe: string; args?: string[] } | { url: string } | { firmware: true } }> = [
   { id: 'bios', name: 'Go to BIOS / UEFI', description: 'Restarts the PC straight into its firmware settings (UEFI PCs only).', requiresAdmin: true, restarts: true, open: { firmware: true } },

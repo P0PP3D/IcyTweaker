@@ -1,9 +1,42 @@
 import { useEffect, useState } from 'react';
 import clsx from 'clsx';
-import type { AppState, BenchResult, DriverBackupView, DriverInfo, DriverJobView, DriverLatency, LatencyCheck, ToolStatus, Progress, RuntimeResult, RuntimeView, ShortcutView, SystemCheckStep } from '../../shared/types';
+import type { AppState, BenchResult, DriverBackupView, DriverInfo, DriverJobView, DriverLatency, GpuAppView, LatencyCheck, ToolStatus, Progress, RuntimeResult, RuntimeView, ShortcutView, SystemCheckStep } from '../../shared/types';
 import { Icon } from '../icons';
 import { Badge, Button, CheckList, FeatureCard, MUTED_BADGE, Tabs, formatBytes, type Ask, Loading } from '../ui';
 import type { Act } from './General';
+
+/** Each GPU maker's own app for driver updates: opens it, or its official download page when it isn't installed. */
+function GpuDriverApps({ busy, act }: { busy: boolean; act: Act }) {
+  const [apps, setApps] = useState<GpuAppView[] | null>(null);
+  useEffect(() => void window.api.gpuApps().then(setApps, () => setApps([])), []);
+  return (
+    <FeatureCard icon="chip" title="Graphics driver apps" subtitle="Update your drivers with your graphics card maker's own app">
+      {!apps ? (
+        <Loading text="Looking for installed driver apps…" />
+      ) : (
+        <ul className="grid gap-3 sm:grid-cols-3">
+          {apps.map((a) => (
+            <li key={a.vendor} className={clsx('flex flex-col gap-2 rounded-xl p-3 ring-1', a.yours ? 'bg-sky-500/10 ring-sky-500/40' : 'bg-[var(--card-2)] ring-[var(--line)]')}>
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="font-medium text-slate-100">{a.vendor}</span>
+                {a.yours && <Badge className="bg-sky-500/15 text-sky-300 ring-sky-500/30">your GPU</Badge>}
+                {!a.installed && <Badge className={MUTED_BADGE}>not installed</Badge>}
+              </div>
+              <p className="text-xs text-slate-400">
+                <span className="text-slate-200">{a.app}</span>. {a.installed ? a.how : 'Opens the official download page.'}
+              </p>
+              <div className="mt-auto pt-1">
+                <Button primary={a.yours} disabled={busy} onClick={() => act(() => window.api.openGpuApp(a.vendor))}>
+                  {a.installed ? `Open ${a.vendor === 'NVIDIA' ? 'NVIDIA App' : a.vendor === 'AMD' ? 'AMD Software' : 'Intel app'}` : 'Get it'}
+                </Button>
+              </div>
+            </li>
+          ))}
+        </ul>
+      )}
+    </FeatureCard>
+  );
+}
 
 function DriverReinstall({ busy, act, ask, onJob }: { busy: boolean; act: Act; ask: Ask; onJob: (j: DriverJobView | null) => void }) {
   const [info, setInfo] = useState<DriverInfo | null>(null);
@@ -569,6 +602,7 @@ export function Resources({ state, busy, act, ask, onDriverJob }: { state: AppSt
       />
       {tab === 'automation' ? (
         <div className="space-y-4">
+          <GpuDriverApps busy={busy} act={act} />
           <DriverReinstall busy={busy} act={act} ask={ask} onJob={onDriverJob} />
           <Runtimes busy={busy} act={act} ask={ask} />
         </div>

@@ -29,6 +29,7 @@ import { createSafety } from './system/safety';
 import { createEngine, tweak } from './tweaks/engine';
 import { generalTweaks } from './tweaks/general';
 import type { TweakView } from '../shared/types';
+import { boldParts, cmpVer, noteLines, parseChangelog, unseen } from '../shared/changelog';
 
 const TMP = path.join(process.cwd(), '.test-tmp', 'extras');
 afterAll(() => rm(TMP, { recursive: true, force: true }));
@@ -487,5 +488,42 @@ describe('startup app icons and uninstall', () => {
     expect(d.findByExe('C:\\Program Files (x86)\\Steam\\steam.exe')?.name).toBe('Steam');
     expect(d.findByExe('C:\\Riot Games\\Riot Client\\RiotClientServices.exe')?.name).toBe('Riot Client');
     expect(d.findByExe('C:\\Shared\\Tools\\agent.exe')).toBeUndefined(); // two apps tie: no answer
+  });
+});
+
+describe("What's new after an update", () => {
+  const md = '# Changelog\n\n## v0.1.10\n\n**New**\n- **A:** one\n  - sub\n\n## v0.1.9\n\n**Fixed**\n- two\n\n## v0.1.8\n\nPlain text.\n';
+  it('orders versions as numbers (0.1.10 after 0.1.9)', () => {
+    expect(cmpVer('0.1.10', '0.1.9')).toBe(1);
+    expect(cmpVer('0.1.9', '0.1.9')).toBe(0);
+    expect(cmpVer('0.2', '0.1.99')).toBe(1);
+  });
+  it('shows every version since the one the user had, newest first, never newer than the installed one', () => {
+    const s = parseChangelog(md);
+    expect(s.map((x) => x.version)).toEqual(['0.1.10', '0.1.9', '0.1.8']);
+    expect(unseen(s, '0.1.10', '0.1.8').map((x) => x.version)).toEqual(['0.1.10', '0.1.9']);
+    expect(unseen(s, '0.1.9', '0.1.8').map((x) => x.version)).toEqual(['0.1.9']); // 0.1.10 not installed yet
+    expect(unseen(s, '0.1.10', '0.1.10')).toEqual([]);
+    expect(unseen(s, '0.1.10', null).map((x) => x.version)).toEqual(['0.1.10']); // reopened from Settings
+  });
+  it('reads the changelog subset: headings, items, nested items, bold runs', () => {
+    const [first] = parseChangelog(md);
+    expect(noteLines(first.body)).toEqual([
+      { kind: 'heading', text: 'New' },
+      { kind: 'item', text: '**A:** one', depth: 0 },
+      { kind: 'item', text: 'sub', depth: 1 },
+    ]);
+    expect(boldParts('**A:** one')).toEqual([
+      ['A:', true],
+      [' one', false],
+    ]);
+  });
+  it('the real CHANGELOG.md has a section for the current version, and every section has notes', async () => {
+    const { readFile } = await import('node:fs/promises');
+    const real = parseChangelog(await readFile('CHANGELOG.md', 'utf8'));
+    const version = JSON.parse(await readFile('package.json', 'utf8')).version as string;
+    expect(real[0].version).toBe(version);
+    for (const s of real) expect(noteLines(s.body).length, s.version).toBeGreaterThan(0);
+    expect(real.some((s) => /gubby/i.test(s.body))).toBe(false); // the easter egg stays a secret
   });
 });

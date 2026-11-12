@@ -9,6 +9,7 @@ import { OldDrivers } from './pages/OldDrivers';
 import { WinFeatures } from './pages/WinFeatures';
 import { Duplicates, OldFiles, Privacy } from './pages/Finder';
 import { Onboarding } from './Onboarding';
+import { WhatsNew, notesSince } from './WhatsNew';
 import { Debloater } from './pages/Debloater';
 import { Fixes } from './pages/Fixes';
 import { General, appliedCount, tweakHandlers } from './pages/General';
@@ -174,6 +175,14 @@ export function App() {
   useEffect(() => {
     if (KEEP_ALIVE.has(page)) setKept((k) => (k.includes(page) ? k : [...k, page]));
   }, [page]);
+  // "What's new" after an update (once per version), or reopened from Settings (this version's notes).
+  const [whatsNew, setWhatsNew] = useState<{ current: string; seen: string | null } | null>(null);
+  useEffect(() => {
+    void window.api.whatsNew().then((w) => w.seen !== w.current && notesSince(w.current, w.seen).length > 0 && setWhatsNew(w));
+    const show = () => void window.api.whatsNew().then((w) => setWhatsNew({ current: w.current, seen: null }));
+    window.addEventListener('icy:whats-new', show);
+    return () => window.removeEventListener('icy:whats-new', show);
+  }, []);
   // The beginner guide, reopened from Home or Settings (openGuide in Onboarding.tsx).
   const [guide, setGuide] = useState(false);
   useEffect(() => {
@@ -623,6 +632,16 @@ export function App() {
           onClose={(ok) => {
             confirm.resolve(ok);
             setConfirm(null);
+          }}
+        />
+      )}
+      {whatsNew && state.onboarded && !guide && (
+        <WhatsNew
+          current={whatsNew.current}
+          seen={whatsNew.seen}
+          onClose={() => {
+            setWhatsNew(null);
+            void window.api.markSeen();
           }}
         />
       )}

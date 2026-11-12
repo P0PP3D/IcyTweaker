@@ -2,6 +2,19 @@
 
 Each section becomes the description of its GitHub release (see .github/workflows/release-notes.yml).
 
+## v0.1.11
+
+**New**
+- **What's new after every update:** this window. After an update, IcyTweaker shows what changed since the version you had. You can open it again from Settings.
+- **Graphics driver apps** (Resources → Automation): one click opens NVIDIA App, AMD Software: Adrenalin Edition or Intel Graphics Software to update your drivers, with your own graphics card's maker highlighted. If the app isn't installed, its official download page opens instead.
+
+**Fixed**
+- **Automatic NVIDIA driver reinstall:**
+  - Display Driver Uninstaller no longer stops at its "Safe Mode?" window, which waited for a click even in silent mode.
+  - An existing DDU installed in another folder is found and used.
+  - An unusual exit code from DDU no longer cancels the job while the PC is already restarting.
+- Clearer message when a download is signed by the wrong company.
+
 ## v0.1.10
 
 **Improved**

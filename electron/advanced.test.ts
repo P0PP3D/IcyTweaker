@@ -216,6 +216,32 @@ describe('driver reinstall', () => {
     await job.clear();
     expect(await job.status()).toBeNull();
   });
+
+  it('finds each GPU maker driver app in the Start menu, and refuses app ids with odd characters', async () => {
+    const { findGpuApps } = await import('./resources/resources');
+    const b64 = (v: unknown) => Buffer.from(JSON.stringify(v), 'utf8').toString('base64');
+    const apps = [
+      { name: 'NVIDIA Control Panel', id: 'NVIDIACorp.NVIDIAControlPanel_56jybvy8sckqj!NVIDIACorp.NVIDIAControlPanel' },
+      { name: 'NVIDIA App', id: 'com.nvidia.nvapp' },
+      { name: 'AMD Software: Adrenalin Edition', id: '{6D809377-6AF0-444B-8957-A3773F02200E}\\AMD\\CNext\\CNext\\RadeonSoftware.exe' },
+      { name: 'Intel® Graphics Software', id: 'bad"; calc.exe' },
+    ];
+    expect(findGpuApps(b64(apps))).toEqual({
+      NVIDIA: { name: 'NVIDIA App', id: 'com.nvidia.nvapp' },
+      AMD: { name: 'AMD Software: Adrenalin Edition', id: '{6D809377-6AF0-444B-8957-A3773F02200E}\\AMD\\CNext\\CNext\\RadeonSoftware.exe' },
+    });
+    expect(findGpuApps(b64({ name: 'NVIDIA App', id: 'com.nvidia.nvapp' })).NVIDIA?.id).toBe('com.nvidia.nvapp'); // one app: not an array
+    expect(findGpuApps('nonsense')).toEqual({});
+  });
+
+  it('runs DDU without its Safe Mode prompt, and finds a DDU installed elsewhere from its App Paths key', async () => {
+    const { DDU_ARGS, parseRegDefault } = await import('./resources/driver');
+    // In normal Windows, -silent alone still waits on DDU's modal "Safe Mode?" window.
+    expect(DDU_ARGS.map((a) => a.toLowerCase())).toEqual(expect.arrayContaining(['-silent', '-nosafemodemsg', '-cleannvidia', '-restart']));
+    const out = '\r\nHKEY_LOCAL_MACHINE\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\App Paths\\Display Driver Uninstaller.exe\r\n    (Default)    REG_SZ    D:\\Tools\\DDU\\Display Driver Uninstaller.exe\r\n';
+    expect(parseRegDefault(out)).toBe('D:\\Tools\\DDU\\Display Driver Uninstaller.exe');
+    expect(parseRegDefault('ERROR: The system was unable to find the specified registry key or value.')).toBeNull();
+  });
 });
 
 describe('frametime capture', () => {

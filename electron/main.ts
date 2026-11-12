@@ -36,7 +36,7 @@ import { fixes } from './tweaks/fixes';
 import { serviceTweaks } from './services/catalog';
 import { LEVELS, createServices } from './services/services';
 import { DNS_PRESETS, activeInterfaces, listAdapters, physicalNics, networkFixes, networkTweaks, validateHosts } from './network/network';
-import { SHORTCUTS, runSystemCheck } from './resources/resources';
+import { GPU_APPS, SHORTCUTS, START_APPS_SCRIPT, findGpuApps, runSystemCheck } from './resources/resources';
 import { isAdmin, relaunchAsAdmin } from './system/admin';
 import { createSafety } from './system/safety';
 import { createEngine } from './tweaks/engine';
@@ -267,7 +267,8 @@ app.whenReady().then(async () => {
       dataDir: safety.dataDir,
       resumeCommand: app.isPackaged ? `"${process.execPath}" --resume-driver-job` : `"${process.execPath}" "${app.getAppPath()}" --resume-driver-job`,
       winget: wingetPath(env.LOCALAPPDATA!),
-      // verify: DDU's install folder from its winget (NSIS) installer.
+      // DDU's NSIS installer puts it in $PROGRAMFILES64\Display Driver Uninstaller (checked in its NSIS script); driver.ts
+      // also reads the App Paths key its installer writes, for an older install somewhere else.
       dduExe: path.join(env.ProgramFiles ?? 'C:\\Program Files', 'Display Driver Uninstaller', 'Display Driver Uninstaller.exe'),
       log: safety.log,
       progress: (done, total, current) => progress({ task: 'driver', done, total, current }),
@@ -296,7 +297,14 @@ app.whenReady().then(async () => {
       startCmd: (typeof saved.startCmd === 'string' ? saved.startCmd : null) as string | null,
       boost: { ...DEFAULT_BOOST, ...(saved.boost as Partial<BoostSettings> | undefined) },
       app: { tray: true, notify: true, startWithWindows: false, weeklyClean: false, lastCleanAt: null, deviceType: 'auto', laptopProfile: false, overlayWithBoost: false, hotkeys: false, autoUpdate: true, theme: 'dark', accent: 'blue', ...savedApp } as AppSettings,
+      /**
+       * The app version whose "What's new" the user has seen. Missing on a fresh install (the beginner guide shows
+       * instead) and on copies updated from before 0.1.11 (onboarded already: they get this version's notes).
+       */
+      seenVersion: (typeof saved.seenVersion === 'string' ? saved.seenVersion : saved.onboarded === true ? '0.1.10' : null) as string | null,
     };
+    // Fresh install: nothing to tell; the notes start from this version.
+    if (!settings.seenVersion) settings.seenVersion = app.getVersion();
     const saveSettings = () => writeFile(settingsFile, JSON.stringify(settings, null, 2));
 
     // Windows build at the last start (build.UBR, e.g. 26200.7171). A change means an update installed since: the
@@ -364,6 +372,13 @@ app.whenReady().then(async () => {
     // left over from a crash or restart is put back first.
     const focus = createFocus(adapter, safety.dataDir, (a, t, ok, d) => safety.log(a, t, ok, d));
     let focusAppsCache: { at: number; value: Promise<ReturnType<typeof parseAppChoices>> } | null = null;
+    // GPU makers' driver apps from the Start menu, kept a minute (one PowerShell, about a second).
+    let gpuAppsCache: { at: number; value: Promise<ReturnType<typeof findGpuApps>> } | null = null;
+    const gpuAppsFound = () => {
+      if (!gpuAppsCache || Date.now() - gpuAppsCache.at > 60_000)
+        gpuAppsCache = { at: Date.now(), value: adapter.query(POWERSHELL_EXE, ['-NoProfile', '-NonInteractive', '-Command', START_APPS_SCRIPT], 30_000).catch(() => '').then(findGpuApps) };
+      return gpuAppsCache.value;
+    };
     void focus.resume().then((m) => m && notify('Focus Mode', 'Started again what the last Focus Mode session had stopped.'), () => {});
     async function setFocusMode(turnOn: boolean): Promise<{ ok: boolean; message: string }> {
       if (turnOn && live && !admin) return { ok: false, message: 'Focus Mode needs administrator (it stops Windows services). Relaunch as admin first.' };
@@ -1214,6 +1229,31 @@ app.whenReady().then(async () => {
       },
 
       shortcuts: async () => SHORTCUTS.map(({ open, ...view }) => view),
+
+      /** GPU makers' driver apps, from the Start menu (read-only). This PC's GPU makers first. */
+      async gpuApps() {
+        const found = await gpuAppsFound();
+        const mine = new Set((hwCache?.hw.gpus ?? []).map((g) => g.vendor));
+        return GPU_APPS.map((g) => ({ vendor: g.vendor, app: found[g.vendor]?.name ?? g.app, installed: !!found[g.vendor], yours: mine.has(g.vendor), how: g.how })).sort(
+          (a, b) => Number(b.yours) - Number(a.yours),
+        );
+      },
+
+      /**
+       * Opens the maker's driver app through Explorer (shell:AppsFolder, as the Start menu does: it starts as the normal
+       * user, not elevated like IcyTweaker), or its official download page when not installed. Opening changes nothing.
+       */
+      async openGpuApp(vendor: unknown) {
+        const g = GPU_APPS.find((x) => x.vendor === vendor);
+        if (!g) return { ok: false, message: 'Invalid request.' };
+        const app = (await gpuAppsFound())[g.vendor];
+        if (app) {
+          spawn(path.join(env.SystemRoot ?? 'C:\\Windows', 'explorer.exe'), [`shell:AppsFolder\\${app.id}`], { detached: true, stdio: 'ignore' }).unref();
+          return { ok: true, message: `Opening ${app.name}. ${g.how}` };
+        }
+        await shell.openExternal(g.page);
+        return { ok: true, message: `${g.app} isn't installed: opened its official download page in your browser.` };
+      },
 
       async openShortcut(id: unknown) {
         const s = SHORTCUTS.find((x) => x.id === id);
@@ -2088,6 +2128,15 @@ app.whenReady().then(async () => {
       async completeOnboarding() {
         settings = { ...settings, onboarded: true };
         await writeFile(settingsFile, JSON.stringify(settings, null, 2));
+      },
+
+      /** For the "What's new" window: this version and the last one whose notes were seen. */
+      whatsNew: async () => ({ current: app.getVersion(), seen: settings.seenVersion }),
+
+      /** The notes of this version were shown. */
+      async markSeen() {
+        settings = { ...settings, seenVersion: app.getVersion() };
+        await saveSettings();
       },
       async restart() {
         const { response } = await dialog.showMessageBox({

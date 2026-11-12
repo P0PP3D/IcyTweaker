@@ -9,7 +9,7 @@ import { existsSync } from 'node:fs';
 import { readFile, rm, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import type { DriverInfo, DriverJobView, HardwareInfo } from '../../shared/types';
-import type { SystemAdapter } from '../system/adapter';
+import { REG_EXE, type SystemAdapter } from '../system/adapter';
 import { DRIVER_TASK, setLogonTask } from '../system/tasks';
 import { allowedUrl, download, verifySignature } from '../system/download';
 
@@ -17,8 +17,18 @@ const PRODUCTS_URL = 'https://www.nvidia.com/Download/API/lookupValueSearch.aspx
 const lookupUrl = (psid: string, pfid: string) =>
   `https://gfwsl.geforce.com/services_toolkit/services/com/nvidia/services/AjaxDriverService.php?func=DriverManualLookup&psid=${psid}&pfid=${pfid}&osID=57&languageCode=1033&isWHQL=1&dch=1&sort1=0&numberOfResults=1`;
 
-// verify: DDU command-line switches (from its documentation; not run on the dev PC). DDU restarts the PC itself.
-export const DDU_ARGS = ['-silent', '-cleannvidia', '-restart'];
+// DDU switches, checked against its source (AppLaunchOptions.vb / Application.xaml.vb, WPF branch; matched without
+// case). -NoSafeModeMsg is required: in normal Windows, -silent alone still shows the modal "Safe Mode?" window and
+// waits for a click. DDU restarts the PC itself (-restart).
+export const DDU_ARGS = ['-silent', '-NoSafeModeMsg', '-cleannvidia', '-restart'];
+/** DDU's installer records its folder here (InstallDirRegKey); a reinstall reuses it. */
+const DDU_APP_PATH = 'HKLM\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\App Paths\\Display Driver Uninstaller.exe';
+
+/** `reg query <key> /ve` output -> the default value (a path), or null. */
+export function parseRegDefault(out: string): string | null {
+  const m = /\(Default\)\s+REG_(?:EXPAND_)?SZ\s+(.+)$/m.exec(out);
+  return m ? m[1].trim().replace(/^"|"$/g, '') : null;
+}
 // verify: NVIDIA package switches: -s silent, -noreboot, -clean (clean install, resets driver settings).
 export const NVIDIA_INSTALL_ARGS = ['-s', '-noreboot', '-clean'];
 
@@ -94,6 +104,13 @@ export function createDriverJob(o: {
   const read = async (): Promise<DriverJobView | null> => readFile(file, 'utf8').then((s) => JSON.parse(s) as DriverJobView, () => null);
   const save = (j: DriverJobView) => writeFile(file, JSON.stringify(j, null, 2));
   const dry = o.adapter.live ? '' : ' (dry-run: nothing downloaded or run)';
+  /** DDU's exe: the default folder, else the folder its installer recorded (an older install elsewhere). */
+  const locateDdu = async (): Promise<string | null> => {
+    if (existsSync(o.dduExe)) return o.dduExe;
+    const out = await o.adapter.query(REG_EXE, ['query', DDU_APP_PATH, '/ve', '/reg:64']).catch(() => '');
+    const p = parseRegDefault(out);
+    return p && /\.exe$/i.test(p) && existsSync(p) ? p : null;
+  };
 
   return {
     status: read,
@@ -103,15 +120,24 @@ export function createDriverJob(o: {
       const installer = path.join(o.dataDir, 'downloads', path.basename(new URL(latest.url).pathname));
       const job: DriverJobView = { step: 'downloading', gpu, version: latest.version, installer, startedAt: new Date().toISOString(), message: 'Downloading the driver…' };
       await save(job);
+      let ddu = o.dduExe;
       try {
         if (o.adapter.live) {
           if (!existsSync(installer)) await download(latest.url, installer, (d, t) => o.progress(d, t, `Driver ${latest.version}`));
           await verifySignature(o.adapter, installer, 'NVIDIA Corporation');
-          if (!existsSync(o.dduExe)) {
+          let found = await locateDdu();
+          if (!found) {
             o.progress(0, 0, 'Installing Display Driver Uninstaller');
-            await o.adapter.exec(o.winget, ['install', '--id', 'Wagnardsoft.DisplayDriverUninstaller', '--exact', '--silent', '--accept-package-agreements', '--accept-source-agreements', '--disable-interactivity'], 15 * 60_000);
-            if (!existsSync(o.dduExe)) throw new Error(`Display Driver Uninstaller was not found at ${o.dduExe} after installing it.`);
+            // winget checks the installer's SHA-256 from its package manifest. "Already installed" (0x8A150061) is fine.
+            await o.adapter.exec(
+              o.winget,
+              ['install', '--id', 'Wagnardsoft.DisplayDriverUninstaller', '--exact', '--silent', '--accept-package-agreements', '--accept-source-agreements', '--disable-interactivity'],
+              { timeoutMs: 15 * 60_000, okCodes: [-1978335135] },
+            );
+            found = await locateDdu();
+            if (!found) throw new Error(`Display Driver Uninstaller was not found at ${o.dduExe} after installing it.`);
           }
+          ddu = found;
         }
         if (o.adapter.live && o.backup) {
           o.progress(0, 0, 'Backing up the installed drivers');
@@ -122,7 +148,9 @@ export function createDriverJob(o: {
         await save(job);
         await setLogonTask(o.adapter, DRIVER_TASK, o.resumeCommand); // elevated, at sign-in; removed after the install
         await o.log('driver-job', 'ddu', true, `${latest.version}${dry}`);
-        await o.adapter.exec(o.dduExe, DDU_ARGS, 30 * 60_000);
+        // Any exit code: DDU relaunches itself to clean and then restarts the PC, so the restart is the real signal.
+        // Failing the job here deleted the resume task while DDU was still cleaning and restarting.
+        await o.adapter.exec(ddu, DDU_ARGS, { timeoutMs: 30 * 60_000, okCodes: 'any' });
       } catch (err) {
         job.step = 'failed';
         job.message = (err as Error).message;

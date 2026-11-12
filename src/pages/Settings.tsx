@@ -6,6 +6,7 @@ import { Button, FeatureCard, RISK_STYLE, Badge, Toggle, type Ask } from '../ui'
 import type { Act } from './General';
 import { ACCENTS, applyTheme } from '../theme';
 import { openGuide } from '../Onboarding';
+import { openWhatsNew } from '../WhatsNew';
 import gubbyImage from '../assets/gubby/gubby.webp';
 import gubbySound from '../assets/gubby/is-that-a-gubby.mp3';
 
@@ -93,6 +94,7 @@ function Updates({ busy, act }: { busy: boolean; act: Act }) {
 
 export function Settings({ state, busy, act, ask }: { state: AppState; busy: boolean; act: Act; ask: Ask }) {
   const [s, setS] = useState<AppSettings | null>(null);
+  const [gubby, setGubby] = useState(false);
   useEffect(() => void window.api.getSettings().then(setS), []);
   const save = async (patch: Partial<AppSettings>) => {
     if (!s) return;
@@ -210,8 +212,16 @@ export function Settings({ state, busy, act, ask }: { state: AppState; busy: boo
       </div>
       <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-[var(--line)] bg-[var(--card)] px-4 py-3">
         <div>
+          <div className="font-medium text-slate-100">What's new</div>
+          <p className="text-sm text-slate-400">What changed in this version. It also shows by itself after each update.</p>
+        </div>
+        <Button onClick={openWhatsNew}>Show what's new</Button>
+      </div>
+      <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-[var(--line)] bg-[var(--card)] px-4 py-3">
+        <div>
           <div className="flex items-center gap-2 font-medium text-slate-100">
-            <span className={clsx('h-2.5 w-2.5 rounded-full', state.live ? 'bg-rose-400' : 'bg-sky-400')} />
+            {/* The mode dot is also the easter-egg button (looks like a plain dot: no hover hint). */}
+            <button type="button" aria-label="?" onClick={() => setGubby((g) => !g)} className={clsx('h-2.5 w-2.5 cursor-default rounded-full', state.live ? 'bg-rose-400' : 'bg-sky-400')} />
             {state.live ? 'Live mode' : 'Dry-run mode'}
           </div>
           <p className="text-sm text-slate-400">
@@ -226,14 +236,13 @@ export function Settings({ state, busy, act, ask }: { state: AppState; busy: boo
           Undo all changes ({state.backupCount})
         </Button>
       </div>
-      <Gubby />
+      {gubby && <Gubby onClose={() => setGubby(false)} />}
     </section>
   );
 }
 
-/** Easter egg: an invisible button in the bottom left of Settings brings out Gubby, who speaks when clicked. */
-function Gubby() {
-  const [shown, setShown] = useState(false);
+/** Easter egg: clicking the Live / Dry-run mode dot brings out Gubby, who speaks when clicked. */
+function Gubby({ onClose }: { onClose: () => void }) {
   const [talking, setTalking] = useState(0); // bumps on each click to replay the wiggle
   const speak = () => {
     const a = new Audio(gubbySound);
@@ -241,23 +250,18 @@ function Gubby() {
     setTalking((n) => n + 1);
   };
   return (
-    <>
-      <button type="button" aria-label="?" onClick={() => setShown((s) => !s)} className="block h-6 w-6 cursor-default opacity-0" />
-      {shown && (
-        <div className="fixed bottom-5 right-5 z-30 animate-[gubby-pop_.35s_cubic-bezier(.34,1.56,.64,1)]">
-          <button type="button" aria-label="Gubby" onClick={speak} className="block overflow-hidden rounded-2xl shadow-2xl ring-1 ring-[var(--line)] transition hover:scale-105 active:scale-95">
-            <img key={talking} src={gubbyImage} alt="Gubby" className={clsx('h-auto w-40', talking > 0 && 'animate-[gubby-wiggle_.5s_ease-in-out]')} draggable={false} />
-          </button>
-          <button
-            type="button"
-            aria-label="Hide Gubby"
-            onClick={() => setShown(false)}
-            className="absolute -right-2 -top-2 grid h-6 w-6 place-items-center rounded-full bg-[var(--card-2)] text-xs text-slate-300 ring-1 ring-[var(--line)] hover:text-slate-50"
-          >
-            ×
-          </button>
-        </div>
-      )}
-    </>
+    <div className="fixed bottom-5 right-5 z-30 animate-[gubby-pop_.35s_cubic-bezier(.34,1.56,.64,1)]">
+      <button type="button" aria-label="Gubby" onClick={speak} className="block overflow-hidden rounded-2xl shadow-2xl ring-1 ring-[var(--line)] transition hover:scale-105 active:scale-95">
+        <img key={talking} src={gubbyImage} alt="Gubby" className={clsx('h-auto w-40', talking > 0 && 'animate-[gubby-wiggle_.5s_ease-in-out]')} draggable={false} />
+      </button>
+      <button
+        type="button"
+        aria-label="Hide Gubby"
+        onClick={onClose}
+        className="absolute -right-2 -top-2 grid h-6 w-6 place-items-center rounded-full bg-[var(--card-2)] text-xs text-slate-300 ring-1 ring-[var(--line)] hover:text-slate-50"
+      >
+        ×
+      </button>
+    </div>
   );
 }

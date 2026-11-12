@@ -238,3 +238,8 @@ Full spec: `docs/SPEC.md`. Work one phase of its "Build order" at a time.
 - 0.1.10: App `KEEP_ALIVE` pages stay mounted (hidden) once opened, so long jobs keep their state across page switches;
   `view(id)` renders a page. Never add a page with timers/polling to KEEP_ALIVE (Home/Games/Focus poll). Finder scans are
   also joinable in main (`findJobs`, `findStatus`). Progress text: fixed-height lines, fixed-width counts, truncated paths.
+- 0.1.11: "What's new" (src/WhatsNew.tsx) = CHANGELOG.md bundled with `?raw`, parsed by shared/changelog.ts; settings
+  `seenVersion` (fresh install = current; pre-0.1.11 copies count as 0.1.10); main `whatsNew` / `markSeen`. A test
+  requires a CHANGELOG section for package.json's version: write it before bumping. Keep the easter egg out of it.
+  GPU driver apps: `GPU_APPS` + Get-StartApps (`findGpuApps`), opened via explorer shell:AppsFolder. DDU runs with
+  -NoSafeModeMsg (checked in DDU's source), found via App Paths too; its exit code is ignored (the restart is the signal).

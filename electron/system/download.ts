@@ -52,6 +52,8 @@ export async function verifySignature(adapter: Pick<SystemAdapter, 'query'>, fil
   const out = await adapter.query(POWERSHELL_EXE, ['-NoProfile', '-NonInteractive', '-Command', `$s = Get-AuthenticodeSignature -LiteralPath '${f}'; "$($s.Status)|$($s.SignerCertificate.Subject)"`], 60_000);
   const [status, subject = ''] = out.trim().split('|');
   if (status !== 'Valid' || !subject.includes(`O=${publisher}`)) {
-    throw new Error(`${path.basename(file)} is not validly signed by ${publisher} (${status || 'no signature'}). It was not run.`);
+    const signer = /O=([^,]+)/.exec(subject)?.[1];
+    const why = status !== 'Valid' ? status || 'no signature' : `signed by ${signer ?? 'someone else'}`;
+    throw new Error(`${path.basename(file)} is not validly signed by ${publisher} (${why}). It was not run.`);
   }
 }
