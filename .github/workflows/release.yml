@@ -36,3 +36,16 @@ jobs:
         env:
           PUBLISH: always
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      # electron-builder once finished "successfully" with only the .blockmap uploaded (v0.1.5). Fail loudly instead.
+      - name: Check the release has all three files
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          v="${GITHUB_REF_NAME#v}"
+          names=$(gh release view "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --json assets --jq '.assets[].name')
+          echo "$names"
+          for f in "IcyTweaker-Setup-$v.exe" "IcyTweaker-Setup-$v.exe.blockmap" latest.yml; do
+            echo "$names" | grep -qxF "$f" || { echo "::error::Release is missing $f"; exit 1; }
+          done
