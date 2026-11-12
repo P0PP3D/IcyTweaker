@@ -56,7 +56,11 @@
       "shortcutName": "IcyTweaker",
       "include": "build/installer.nsh",
       "deleteAppDataOnUninstall": false,
-      "artifactName": "IcyTweaker-Setup-${version}.${ext}"
+      "artifactName": "IcyTweaker-Setup-${version}.${ext}",
+      "installerSidebar": "build/installerSidebar.bmp",
+      "uninstallerSidebar": "build/installerSidebar.bmp",
+      "installerHeader": "build/installerHeader.bmp",
+      "runAfterFinish": true
     }
   },
   "updateRepo": "P0PP3D/IcyTweaker",

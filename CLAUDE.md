@@ -211,5 +211,8 @@ Full spec: `docs/SPEC.md`. Work one phase of its "Build order" at a time.
   PowerShell query; GOG unverified); EA and Battle.net not supported (no documented install record). Library and profile
   launches go through main `startUnelevated` (.lnk + explorer). Launcher-junk cleaner targets (steam logs/depotcache, epic,
   riot, ubisoft, game logs). Home checkups: chipset driver date (Win32_PnPSignedDriver) + `openVendorPage` (AMD/Intel pages).
+- Installer: assisted NSIS, branded (build/installerSidebar.bmp + installerHeader.bmp from scripts/installer-art.ps1,
+  welcome text in installer.nsh `customWelcomePage`). Restart and install = `quitAndInstall(true, true)` (silent, runs the
+  app after; the non-silent assisted run did not relaunch it).
 - Hardware detection (~9 s) is cached in `hardware.json` (userData) and refreshed in the background. Start-up reads
   must run in parallel (sequential awaits defeat the batched reads).

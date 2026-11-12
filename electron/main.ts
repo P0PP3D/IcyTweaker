@@ -817,8 +817,11 @@ app.whenReady().then(async () => {
         if (!canAutoUpdate || !updateDownloaded) return;
         await safety.log('update-install', 'IcyTweaker', true);
         await boost.end(); // power plan and priorities back before the app closes
+        if (focus.state()) await focus.off(false); // services back on before the app closes
         appQuitting = true;
-        setImmediate(() => autoUpdater.quitAndInstall(false, true));
+        // Silent (no wizard to click through) and run after: the assisted installer run non-silently showed its wizard
+        // and didn't reliably start the app again. The app is already elevated, so the installer runs without a prompt.
+        setImmediate(() => autoUpdater.quitAndInstall(true, true));
       },
 
       async openUpdatePage() {
