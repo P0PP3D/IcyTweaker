@@ -8,6 +8,15 @@ const delReg = (key: string, name: string): [SettingRef, null] => [{ kind: 'reg'
 
 const base = { risk: 'safe' as const, requiresAdmin: true, requiresReboot: false, permanent: false };
 
+/** Opens NVIDIA Control Panel (also used by the Resources shortcut and the Game Profiles stretched-res tip). */
+export const NVCP_SCRIPT =
+  // A Store app's exe (under WindowsApps) can't be started by path ("Access is denied"): it starts by its app id.
+  "$p = Get-AppxPackage -Name 'NVIDIACorp.NVIDIAControlPanel' | Select-Object -First 1; " +
+  "if ($p) { $id = @((Get-AppxPackageManifest $p).Package.Applications.Application)[0].Id; " +
+  "Start-Process -FilePath (Join-Path $env:SystemRoot 'explorer.exe') -ArgumentList ('shell:AppsFolder\\' + $p.PackageFamilyName + '!' + $id); return }; " +
+  "$exe = Join-Path $env:ProgramFiles 'NVIDIA Corporation\\Control Panel Client\\nvcplui.exe'; " +
+  "if (-not (Test-Path $exe)) { throw 'NVIDIA Control Panel is not installed.' }; Start-Process -FilePath $exe";
+
 export const fixes: FixDefinition[] = [
   {
     ...base,
@@ -34,13 +43,7 @@ export const fixes: FixDefinition[] = [
     name: 'NVIDIA Control Panel (No Microsoft Store)',
     description: 'Opens NVIDIA Control Panel straight from its installed files, for when the Store version will not launch.',
     requiresAdmin: false,
-    script:
-      // A Store app's exe (under WindowsApps) can't be started by path ("Access is denied"): it starts by its app id.
-      "$p = Get-AppxPackage -Name 'NVIDIACorp.NVIDIAControlPanel' | Select-Object -First 1; " +
-      "if ($p) { $id = @((Get-AppxPackageManifest $p).Package.Applications.Application)[0].Id; " +
-      "Start-Process -FilePath (Join-Path $env:SystemRoot 'explorer.exe') -ArgumentList ('shell:AppsFolder\\' + $p.PackageFamilyName + '!' + $id); return }; " +
-      "$exe = Join-Path $env:ProgramFiles 'NVIDIA Corporation\\Control Panel Client\\nvcplui.exe'; " +
-      "if (-not (Test-Path $exe)) { throw 'NVIDIA Control Panel is not installed.' }; Start-Process -FilePath $exe",
+    script: NVCP_SCRIPT,
   },
   {
     ...base,

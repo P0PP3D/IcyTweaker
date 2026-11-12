@@ -2,7 +2,8 @@
 // The repairs run through adapter.exec, so dry-run runs none of them.
 import path from 'node:path';
 import type { ShortcutView, SystemCheckStep } from '../../shared/types';
-import type { SystemAdapter } from '../system/adapter';
+import { POWERSHELL_EXE, type SystemAdapter } from '../system/adapter';
+import { NVCP_SCRIPT } from '../tweaks/fixes';
 
 const SYSTEM32 = path.join(process.env.SystemRoot ?? 'C:\\Windows', 'System32');
 
@@ -78,6 +79,7 @@ export const SHORTCUTS: Array<ShortcutView & { open: { exe: string; args?: strin
   { id: 'bitlocker', name: 'BitLocker settings', description: 'Drive encryption and recovery keys.', requiresAdmin: false, restarts: false, open: { exe: path.join(SYSTEM32, 'control.exe'), args: ['/name', 'Microsoft.BitLockerDriveEncryption'] } },
   { id: 'msconfig', name: 'System Configuration', description: 'Boot options and safe mode (msconfig).', requiresAdmin: true, restarts: false, open: { exe: path.join(SYSTEM32, 'msconfig.exe') } },
   { id: 'display', name: 'Advanced display settings', description: 'Refresh rate and display mode for each monitor.', requiresAdmin: false, restarts: false, open: { url: 'ms-settings:display-advanced' } },
+  { id: 'nvidia-control-panel', name: 'NVIDIA Control Panel', description: 'Display scaling (stretched resolutions), 3D settings and G-SYNC.', requiresAdmin: false, restarts: false, open: { exe: POWERSHELL_EXE, args: ['-NoProfile', '-NonInteractive', '-WindowStyle', 'Hidden', '-Command', NVCP_SCRIPT] } },
   { id: 'recycle-bin', name: 'Recycle Bin', description: 'Opens the Recycle Bin, to look through or restore deleted files.', requiresAdmin: false, restarts: false, open: { exe: path.join(path.dirname(SYSTEM32), 'explorer.exe'), args: ['shell:RecycleBinFolder'] } },
   { id: 'msinfo32', name: 'System Information', description: 'Full hardware and software summary (msinfo32).', requiresAdmin: false, restarts: false, open: { exe: path.join(SYSTEM32, 'msinfo32.exe') } },
 ];

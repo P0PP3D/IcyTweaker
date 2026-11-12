@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import clsx from 'clsx';
 import type { AppState, CleanResult, CleanRisk, CleanTargetView, Progress, ScanResult } from '../../shared/types';
-import { Badge, Banner, Button, MUTED_BADGE, Ring, formatBytes, type Ask } from '../ui';
+import { Badge, Banner, Button, MUTED_BADGE, Ring, ScanAge, formatBytes, type Ask } from '../ui';
 import type { Act } from './General';
 
 const RISK: Record<CleanRisk, string> = {
@@ -18,15 +18,21 @@ function useCleaner(group: Group | 'health', state: AppState) {
   const [scans, setScans] = useState<Record<string, ScanResult>>({});
   const [cleaned, setCleaned] = useState<Record<string, CleanResult>>({});
   const [progress, setProgress] = useState<Progress | null>(null);
+  /** When the shown sizes were measured (the oldest of the page's saved scans). */
+  const [scanAt, setScanAt] = useState<string | null>(null);
 
   const load = useCallback(async () => {
-    const all = await window.api.listCleanTargets();
+    const [all, last] = await Promise.all([window.api.listCleanTargets(), window.api.lastScans()]);
     // Health Check: safe, preselected targets only, and admin ones only when elevated (or in dry-run).
-    setTargets(
+    const mine =
       group === 'health'
         ? all.filter((t) => t.risk === 'safe' && t.defaultSelected && (!t.requiresAdmin || state.isAdmin || !state.live))
-        : all.filter((t) => t.group === group),
-    );
+        : all.filter((t) => t.group === group);
+    setTargets(mine);
+    // The last scan of these targets (from any page or session), so the page isn't empty.
+    const saved = mine.map((t) => last.cleaner?.[t.id]).filter((x): x is NonNullable<typeof x> => !!x);
+    setScans((s) => (Object.keys(s).length ? s : Object.fromEntries(saved.map((x) => [x.result.id, x.result]))));
+    setScanAt((a) => a ?? (saved.length ? saved.map((x) => x.at).sort()[0] : null));
   }, [group, state.isAdmin, state.live]);
   useEffect(() => void load(), [load]);
   useEffect(() => window.api.onProgress((p) => (p.task === 'scan' || p.task === 'clean') && setProgress(p.done < p.total ? p : null)), []);
@@ -35,8 +41,9 @@ function useCleaner(group: Group | 'health', state: AppState) {
     setCleaned({});
     const results = await window.api.scanCleanTargets(ids);
     setScans(Object.fromEntries(results.map((r) => [r.id, r])));
+    setScanAt(new Date().toISOString());
   }
-  return { targets, scans, cleaned, setCleaned, progress, scan, load };
+  return { targets, scans, cleaned, setCleaned, progress, scan, load, scanAt };
 }
 
 function ProgressLine({ p }: { p: Progress | null }) {
@@ -66,7 +73,7 @@ async function confirmClean(ask: Ask, picked: CleanTargetView[], bytes: number) 
 }
 
 export function HealthCheck({ state, busy, act, ask }: { state: AppState; busy: boolean; act: Act; ask: Ask }) {
-  const { targets, scans, cleaned, setCleaned, progress, scan } = useCleaner('health', state);
+  const { targets, scans, cleaned, setCleaned, progress, scan, scanAt } = useCleaner('health', state);
   const [scanning, setScanning] = useState(false);
   const ids = (targets ?? []).map((t) => t.id);
   const total = Object.values(scans).reduce((a, r) => a + r.bytes, 0);
@@ -78,6 +85,9 @@ export function HealthCheck({ state, busy, act, ask }: { state: AppState; busy: 
       <div>
         <h2 className="text-xl font-semibold text-slate-100">Health Check</h2>
         <p className="text-sm text-slate-400">One click: scans only Safe items (temp files, caches, crash dumps, error reports), which Windows and apps simply rebuild.</p>
+        <div className="mt-1">
+          <ScanAge at={scanAt} />
+        </div>
       </div>
       <div className="flex flex-wrap items-center gap-8 rounded-xl bg-[var(--card)] p-6 ring-1 ring-[var(--line)]">
         <Ring
@@ -144,7 +154,7 @@ const TITLES: Record<Group, [string, string]> = {
 };
 
 export function CleanerPage({ group, state, busy, act, ask }: { group: Group; state: AppState; busy: boolean; act: Act; ask: Ask }) {
-  const { targets, scans, cleaned, setCleaned, progress, scan, load } = useCleaner(group, state);
+  const { targets, scans, cleaned, setCleaned, progress, scan, load, scanAt } = useCleaner(group, state);
   const [selected, setSelected] = useState<Set<string> | null>(null);
   const [scanning, setScanning] = useState(false);
   const sel = useMemo(() => selected ?? new Set((targets ?? []).filter((t) => t.defaultSelected).map((t) => t.id)), [selected, targets]);
@@ -173,6 +183,9 @@ export function CleanerPage({ group, state, busy, act, ask }: { group: Group; st
         <div className="max-w-2xl">
           <h2 className="text-xl font-semibold text-slate-100">{title}</h2>
           <p className="text-sm text-slate-400">{intro}</p>
+          <div className="mt-1">
+            <ScanAge at={scanAt} />
+          </div>
         </div>
         <div className="flex flex-wrap gap-2">
           <Button

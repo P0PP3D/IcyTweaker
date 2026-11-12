@@ -96,9 +96,14 @@ function ResolutionPresets({ width, height, onPick, disabled }: { width?: number
         })}
       </div>
       {stretched && (
-        <p className="text-xs text-slate-400">
-          Stretched: also turn on Fullscreen below, and in NVIDIA Control Panel → Adjust desktop size and position pick <b>Full-screen</b> with scaling on <b>GPU</b> (AMD: GPU Scaling on, Full panel). Otherwise you get black bars.
-        </p>
+        <div className="flex flex-wrap items-center gap-3 rounded-lg bg-[var(--card-2)] px-3 py-2 ring-1 ring-[var(--line)]">
+          <p className="min-w-0 flex-1 text-xs text-slate-400">
+            Stretched: also turn on Fullscreen below, and in NVIDIA Control Panel → Adjust desktop size and position pick <b>Full-screen</b> with scaling on <b>GPU</b> (AMD: GPU Scaling on, Full panel). Otherwise you get black bars.
+          </p>
+          <Button disabled={disabled} onClick={() => void window.api.openShortcut('nvidia-control-panel')}>
+            Open NVIDIA Control Panel
+          </Button>
+        </div>
       )}
     </div>
   );
@@ -738,28 +743,32 @@ function WinSettings({ target, busy, act }: { target: string; busy: boolean; act
     </label>
   );
   return (
-    <fieldset className="space-y-2 rounded-lg bg-[var(--card-2)] p-3 ring-1 ring-[var(--line)]">
-      <legend className="px-1 text-sm font-medium text-slate-200">Windows settings for this game</legend>
-      <p className="truncate text-xs text-slate-500" title={data.exe}>
-        {data.exe}
-      </p>
-      <div className="grid gap-2 text-sm text-slate-300 sm:grid-cols-2">
-        <label className="flex items-center gap-2">
-          Graphics
-          <select value={v.gpu} disabled={busy} onChange={(e) => set({ gpu: Number(e.target.value) as GameWinSettings['gpu'] })} className="rounded-md bg-white/5 px-2 py-1 text-slate-100 ring-1 ring-white/10">
+    <section className="space-y-3 rounded-lg bg-[var(--card-2)] p-4 ring-1 ring-[var(--line)]">
+      <div>
+        <h4 className="text-sm font-semibold text-slate-100">Windows settings for this game</h4>
+        <p className="truncate text-xs text-slate-500" title={data.exe}>
+          {data.exe}
+        </p>
+      </div>
+      <div className="grid gap-3 text-sm text-slate-300 sm:grid-cols-2">
+        <label className="flex flex-col gap-1">
+          <span className="text-xs text-slate-400">Graphics</span>
+          <select value={v.gpu} disabled={busy} onChange={(e) => set({ gpu: Number(e.target.value) as GameWinSettings['gpu'] })} className="w-full rounded-md bg-white/5 px-2 py-1.5 text-slate-100 ring-1 ring-white/10">
             <option value={0} className="bg-slate-900">Let Windows decide</option>
             <option value={2} className="bg-slate-900">High performance GPU</option>
             <option value={1} className="bg-slate-900">Power saving GPU</option>
           </select>
         </label>
-        <label className="flex items-center gap-2">
-          CPU priority
-          <select value={v.priority} disabled={busy} onChange={(e) => set({ priority: e.target.value as GameWinSettings['priority'] })} className="rounded-md bg-white/5 px-2 py-1 text-slate-100 ring-1 ring-white/10">
+        <label className="flex flex-col gap-1">
+          <span className="text-xs text-slate-400">CPU priority</span>
+          <select value={v.priority} disabled={busy} onChange={(e) => set({ priority: e.target.value as GameWinSettings['priority'] })} className="w-full rounded-md bg-white/5 px-2 py-1.5 text-slate-100 ring-1 ring-white/10">
             <option value="default" className="bg-slate-900">Normal (Windows default)</option>
             <option value="above" className="bg-slate-900">Above normal</option>
             <option value="high" className="bg-slate-900">High</option>
           </select>
         </label>
+      </div>
+      <div className="grid gap-2 text-sm text-slate-300 sm:grid-cols-2">
         {box('fso', 'Disable fullscreen optimizations', 'Properties > Compatibility. Can lower input delay in exclusive fullscreen; turn it back on if the game looks wrong.')}
         {box('dpi', 'High-DPI scaling by the game', 'Properties > Compatibility > Override high DPI scaling (Application). Fixes blurry or wrongly sized games on scaled displays.')}
         {box('admin', 'Run as administrator', 'Some launchers (and anti-cheats) refuse games that ask for administrator. Only use it if the game needs it.')}
@@ -786,15 +795,24 @@ function WinSettings({ target, busy, act }: { target: string; busy: boolean; act
           Put back
         </Button>
       </div>
-    </fieldset>
+    </section>
   );
 }
 
 /** A library game without a profile: play it, set its Windows settings. */
 function LibraryPanel({ g, icon, busy, act, onPlay }: { g: LibraryGame; icon?: string | null; busy: boolean; act: Act; onPlay: () => void }) {
+  const [art, setArt] = useState<string | null>(null);
+  useEffect(() => void window.api.libraryArt(g.id).then(setArt, () => {}), [g.id]);
   return (
-    <div className="space-y-3 rounded-xl bg-[var(--card)] p-4 ring-1 ring-[var(--line)]">
-      <div className="flex items-start justify-between gap-3">
+    <div className="space-y-4 rounded-xl bg-[var(--card)] p-4 ring-1 ring-[var(--line)]">
+      {art ? (
+        <img src={art} alt="" className="aspect-[460/215] w-full rounded-lg object-cover ring-1 ring-[var(--line)]" />
+      ) : (
+        <div className="grid aspect-[460/215] w-full place-items-center rounded-lg bg-gradient-to-br from-sky-900/40 to-slate-900 ring-1 ring-[var(--line)]">
+          {icon ? <img src={icon} alt="" className="h-16 w-16" /> : <span className="text-3xl font-bold text-slate-300">{g.name.slice(0, 2)}</span>}
+        </div>
+      )}
+      <div className="flex items-center justify-between gap-3">
         <div className="flex items-center gap-3">
           <GameIcon name={g.name} src={icon} large />
           <div>

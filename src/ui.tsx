@@ -435,3 +435,26 @@ export function Tabs<T extends string>({ tabs, value, onChange }: { tabs: Array<
 
 export const formatBytes =(n: number | null) =>
   n === null ? 'N/A' : n === 0 ? '0 B' : n >= 1024 ** 3 ? `${(n / 1024 ** 3).toFixed(1)} GB` : n >= 1024 ** 2 ? `${(n / 1024 ** 2).toFixed(0)} MB` : `${Math.max(1, Math.round(n / 1024))} KB`;
+
+/** "3 min ago", "2 h ago", "4 days ago" (ISO time in the past). */
+export function ago(iso: string, now = Date.now()) {
+  const s = Math.max(0, Math.round((now - Date.parse(iso)) / 1000));
+  if (s < 60) return 'just now';
+  const m = Math.round(s / 60);
+  if (m < 60) return `${m} min ago`;
+  const h = Math.round(m / 60);
+  if (h < 48) return `${h} h ago`;
+  return `${Math.round(h / 24)} days ago`;
+}
+
+/** When the shown result was scanned, e.g. "Last scan 2 h ago". */
+export function ScanAge({ at, saved }: { at: string | null; saved?: boolean }) {
+  if (!at) return null;
+  return (
+    <span className="inline-flex items-center gap-1.5 rounded-full bg-white/5 px-2.5 py-0.5 text-xs text-slate-400 ring-1 ring-white/10" title={new Date(at).toLocaleString()}>
+      <span className="h-1.5 w-1.5 rounded-full bg-sky-400" />
+      Last scan {ago(at)}
+      {saved ? ' (saved result)' : ''}
+    </span>
+  );
+}

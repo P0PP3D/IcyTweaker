@@ -5,7 +5,7 @@ import { createCleaner, driveHealth, type Env } from './cleaner/cleaner';
 import os from 'node:os';
 import path from 'node:path';
 import { spawn } from 'node:child_process';
-import type { Accent, ProcessView, AppSettings, CleanResult, DriverJobView, FrametimeResult, GameValues, InvokeApi, NetAdapterView, Progress, ServiceInfo, ServiceLevel, ServiceStartType } from '../shared/types';
+import type { Accent, LastScans, ProcessView, AppSettings, CleanResult, DriverJobView, FrametimeResult, GameValues, InvokeApi, NetAdapterView, Progress, ServiceInfo, ServiceLevel, ServiceStartType } from '../shared/types';
 import { POWERSHELL_EXE, SHUTDOWN_EXE, createSystemAdapter, isLiveEnv, liveAdapter, REG_EXE, runningProcesses, sz, type SettingRef } from './system/adapter';
 import { createProcessSampler, queryProcesses } from './system/processes';
 import { WPT_INSTALL_ARGS, XPERF, latencyCheck, traceDrivers } from './system/latency';
@@ -51,7 +51,7 @@ const ACCENTS: Accent[] = ['blue', 'cyan', 'violet', 'emerald', 'indigo'];
 import { createStartup, startupSources } from './apps/startup';
 import { RUNTIMES, installRuntimes, wingetPath } from './resources/runtimes';
 import { LATENCY_TARGETS, dnsBenchmark, latencyTest, tcpProbe, validHost } from './network/tests';
-import { appendFile, copyFile, mkdir, readFile, writeFile } from 'node:fs/promises';
+import { appendFile, copyFile, mkdir, readdir, readFile, writeFile } from 'node:fs/promises';
 
 // The app was renamed IcyCleaner -> IcyTweaker. Its data folder keeps the old name: the backups Undo needs, the
 // settings and the logs are there. (An explicit --user-data-dir, as in tests, still wins.)
@@ -209,7 +209,18 @@ app.whenReady().then(async () => {
     let startupIds = new Map<string, boolean>(); // id -> requiresAdmin, from the last listStartup()
     let netTestRunning = false;
     let pendingConfig: ConfigFile | null = null; // from the last readConfig()
-    let foundPaths = new Set<string>(); // from the last duplicate / old-files scan; only these can be trashed
+    // Last scans (Disk Analyzer overview, duplicates, old files, cleaner sizes), kept so each page shows its last
+    // result and when it ran instead of an empty screen. Per mode, in the data dir.
+    const lastScansFile = path.join(safety.dataDir, 'last-scans.json');
+    let lastScans: LastScans = await readFile(lastScansFile, 'utf8').then((t) => JSON.parse(t) as LastScans, () => ({}));
+    let foundPaths = new Set<string>(); // files in the last duplicate / old-files results; only these can be trashed
+    const refreshFound = () =>
+      (foundPaths = new Set([...(lastScans.duplicates?.groups ?? []).flatMap((g) => g.files.map((f) => f.path)), ...(lastScans.oldfiles?.files ?? []).map((f) => f.path)].map((p) => path.resolve(p).toLowerCase())));
+    refreshFound();
+    const saveLast = (patch: Partial<LastScans>) => {
+      lastScans = { ...lastScans, ...patch };
+      void writeFile(lastScansFile, JSON.stringify(lastScans)).catch(() => {});
+    };
     let findCancelled = false;
     const privacy = createPrivacy(safety, { appData: env.APPDATA!, snapshotDir: path.join(safety.dataDir, 'privacy-backups') });
     const captureHistory = path.join(app.getPath('userData'), 'captures', 'history.json');
@@ -862,6 +873,8 @@ app.whenReady().then(async () => {
           results.push(await cleaner.scan(x!));
         }
         progress({ task: 'scan', done: list.length, total: list.length, current: '' });
+        const at = new Date().toISOString();
+        saveLast({ cleaner: { ...lastScans.cleaner, ...Object.fromEntries(results.map((r) => [r.id, { at, result: r }])) } });
         return results;
       },
 
@@ -888,6 +901,14 @@ app.whenReady().then(async () => {
           await safety.log('clean', x!.id, !r.skipped, r.skipped ?? `${r.files} file(s), ${r.freed} bytes${r.locked ? `, ${r.locked} in use` : ''}${live ? '' : ' (dry-run: nothing deleted)'}`);
         }
         progress({ task: 'clean', done: list.length, total: list.length, current: '' });
+        // Saved scan sizes of cleaned targets: what was left behind (files in use), as of now.
+        const at = new Date().toISOString();
+        saveLast({
+          cleaner: {
+            ...lastScans.cleaner,
+            ...Object.fromEntries(results.filter((r) => !r.skipped && live).map((r) => [r.id, { at, result: { id: r.id, bytes: Math.max(0, (lastScans.cleaner?.[r.id]?.result.bytes ?? 0) - r.freed), files: r.locked, inaccessible: 0 } }])),
+          },
+        });
         const freed = results.reduce((a, r) => a + r.freed, 0);
         const skipped = results.filter((r) => r.skipped).length;
         const locked = results.reduce((a, r) => a + r.locked, 0);
@@ -906,7 +927,9 @@ app.whenReady().then(async () => {
       async analyze(root: unknown) {
         if (typeof root !== 'string' || !analyzeRoots.includes(root)) return { error: 'Invalid request.' };
         try {
-          return await analyzer.analyze(root, (done, bytes, current) => progress({ task: 'analyze', done, total: 0, current, bytes }), adapter.isRemoved);
+          const view = await analyzer.analyze(root, (done, bytes, current) => progress({ task: 'analyze', done, total: 0, current, bytes }), adapter.isRemoved);
+          saveLast({ analyze: { at: new Date().toISOString(), root, view } });
+          return view;
         } catch (err) {
           return { error: (err as Error).message };
         }
@@ -1325,6 +1348,7 @@ app.whenReady().then(async () => {
 
       // ---- Duplicate Finder and Old Files (read-only scans; deletes go to the Recycle Bin)
       findRoots: async () => analyzeRoots,
+      lastScans: async () => lastScans,
 
       async findDuplicates(root: unknown) {
         if (typeof root !== 'string' || !analyzeRoots.includes(root)) return { groups: [], error: 'Invalid request.' };
@@ -1335,7 +1359,8 @@ app.whenReady().then(async () => {
             cancelled: () => findCancelled,
             onProgress: (done, current) => progress({ task: 'find', done, total: 0, current }),
           });
-          foundPaths = new Set(groups.flatMap((g) => g.files.map((f) => path.resolve(f.path).toLowerCase())));
+          saveLast({ duplicates: { at: new Date().toISOString(), root, groups } });
+          refreshFound();
           return { groups };
         } catch (err) {
           return { groups: [], error: (err as Error).message };
@@ -1349,7 +1374,8 @@ app.whenReady().then(async () => {
         findCancelled = false;
         try {
           const files = await findOldFiles(root, { days: days as number, skip: (p) => isProtected(p) || keptOut(p) || !!adapter.isRemoved?.(p), cancelled: () => findCancelled });
-          foundPaths = new Set(files.map((f) => path.resolve(f.path).toLowerCase()));
+          saveLast({ oldfiles: { at: new Date().toISOString(), root, days: days as number, files } });
+          refreshFound();
           return { files };
         } catch (err) {
           return { files: [], error: (err as Error).message };
@@ -1555,6 +1581,26 @@ app.whenReady().then(async () => {
           }),
         );
         return out;
+      },
+
+      /** A Steam library game's wide header art, from Steam's own local cache (no download). null = none. */
+      async libraryArt(id: unknown) {
+        const appid = /^steam-(\d+)$/.exec(String(id))?.[1];
+        if (!appid || !libraryGames.some((g) => g.id === id)) return null;
+        const dir = path.join(cleanerEnv.steamPath, 'appcache', 'librarycache', appid);
+        const pick = async (d: string, depth: number): Promise<string | null> => {
+          const entries = await readdir(d, { withFileTypes: true }).catch(() => []);
+          const hit = entries.find((e) => e.isFile() && /^(library_)?header\.jpg$/i.test(e.name));
+          if (hit) return path.join(d, hit.name);
+          if (depth === 0) return null;
+          for (const e of entries) if (e.isDirectory()) {
+            const found = await pick(path.join(d, e.name), depth - 1);
+            if (found) return found;
+          }
+          return null;
+        };
+        const file = await pick(dir, 1);
+        return file ? `data:image/jpeg;base64,${(await readFile(file)).toString('base64')}` : null;
       },
 
       async launchLibraryGame(id: unknown) {

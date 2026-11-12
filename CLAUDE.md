@@ -185,5 +185,10 @@ Full spec: `docs/SPEC.md`. Work one phase of its "Build order" at a time.
   `GameView.optimizedAt`, frametimes, `SensConverter` yaw table). Editor "Competitive setup" = recommended values +
   per-game Boost. Startup items show event-101 slowdowns (`BootInfo.slowApps[].file`). `library.ts` `ALWAYS_ON_TOOL`
   keeps always-running Steam software (docks, wallpapers, scalers) out of the library and Game Boost.
+- Last scans: main `last-scans.json` (data dir) keeps the Disk Analyzer overview (not its tree: folders of a saved
+  result can't be opened until a new scan), duplicates, old files and cleaner sizes; `foundPaths` (trashable files) is
+  rebuilt from it. Pages show `ScanAge` (ui.tsx `ago`). Library games: Steam header art from Steam's local
+  `appcache\librarycache` (main `libraryArt`). NVIDIA Control Panel opens via shortcut `nvidia-control-panel`
+  (`NVCP_SCRIPT` in fixes.ts, shared with the fix).
 - Hardware detection (~9 s) is cached in `hardware.json` (userData) and refreshed in the background. Start-up reads
   must run in parallel (sequential awaits defeat the batched reads).

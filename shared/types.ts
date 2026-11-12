@@ -686,6 +686,14 @@ export interface DirEntry {
   isDir: boolean;
 }
 
+/** The last result of each scanner, with when it ran (`at`, ISO). */
+export interface LastScans {
+  analyze?: { at: string; root: string; view: AnalyzeView };
+  duplicates?: { at: string; root: string; groups: DuplicateGroup[] };
+  oldfiles?: { at: string; root: string; days: number; files: OldFile[] };
+  cleaner?: Record<string, { at: string; result: ScanResult }>;
+}
+
 export interface AnalyzeView {
   root: string;
   path: string;
@@ -852,6 +860,10 @@ export interface OptimizerApi {
   setSettings(s: Omit<AppSettings, 'lastCleanAt'>): Promise<AppSettings>;
   /** Folders the finders may scan (drives and your user folder). */
   findRoots(): Promise<string[]>;
+  /** A Steam library game's header art (data URL) from Steam's local cache; null = none. */
+  libraryArt(id: string): Promise<string | null>;
+  /** Last results of the Disk Analyzer, finders and cleaner scans. */
+  lastScans(): Promise<LastScans>;
   findDuplicates(root: string): Promise<{ groups: DuplicateGroup[]; error?: string }>;
   findOldFiles(root: string, days: number): Promise<{ files: OldFile[]; error?: string }>;
   cancelFind(): Promise<void>;

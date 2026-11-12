@@ -110,7 +110,6 @@ export const gameProfiles: GameProfile[] = [
     publisher: 'Riot Games',
     checkedVersion: 'GameUserSettings.ini as of 2026-11',
     // verify: Valorant also stores graphics settings in your Riot account and may put them back on next launch.
-    note: 'Valorant also keeps graphics settings in your Riot account and may restore them from there. Its FPS cap is not in this file.',
     exe: ['valorant-win64-shipping.exe'],
     install: { riot: 'valorant.live' },
     icon: ['{riot:valorant}\\VALORANT.exe', 'C:\\Riot Games\\VALORANT\\live\\VALORANT.exe'],

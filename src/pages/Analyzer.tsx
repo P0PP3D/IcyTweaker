@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import clsx from 'clsx';
 import type { AnalyzeView, DirEntry, Progress } from '../../shared/types';
 import { squarify } from '../treemap';
-import { Button, formatBytes, type Ask } from '../ui';
+import { Button, ScanAge, formatBytes, type Ask } from '../ui';
 import type { Act } from './General';
 
 const COLORS = ['bg-sky-500/70', 'bg-violet-500/70', 'bg-emerald-500/70', 'bg-amber-500/70', 'bg-rose-500/70', 'bg-cyan-500/70', 'bg-fuchsia-500/70', 'bg-lime-500/70'];
@@ -44,22 +44,37 @@ export function Analyzer({ busy, act, ask }: { busy: boolean; act: Act; ask: Ask
   const [error, setError] = useState<string | null>(null);
   const [scanning, setScanning] = useState(false);
   const [progress, setProgress] = useState<Progress | null>(null);
+  // When the shown result was scanned; `saved` = loaded from the last session (its folders can't be opened until a new scan).
+  const [scanAt, setScanAt] = useState<string | null>(null);
+  const [saved, setSaved] = useState(false);
 
   useEffect(() => {
-    void window.api.analyzeRoots().then((r) => {
+    void Promise.all([window.api.analyzeRoots(), window.api.lastScans()]).then(([r, last]) => {
       setRoots(r);
-      setRoot(r[r.length - 1] ?? ''); // your user folder: quick, and where most big files are
+      const a = last.analyze && r.includes(last.analyze.root) ? last.analyze : null;
+      setRoot(a?.root ?? r[r.length - 1] ?? ''); // default: your user folder, quick and where most big files are
+      if (a) {
+        setView(a.view);
+        setScanAt(a.at);
+        setSaved(true);
+      }
     });
     return window.api.onProgress((p) => p.task === 'analyze' && setProgress(p));
   }, []);
 
   const show = (r: AnalyzeView | { error: string }) => ('error' in r ? setError(r.error) : (setView(r), setError(null)));
-  const open = async (p: string) => show(await window.api.analyzeOpen(p));
+  const open = async (p: string) =>
+    saved ? setError('This is the saved result from your last scan. Press Analyze to scan again, then folders open.') : show(await window.api.analyzeOpen(p));
 
   async function analyze() {
     setScanning(true);
     setView(null);
-    show(await window.api.analyze(root));
+    const r = await window.api.analyze(root);
+    show(r);
+    if (!('error' in r)) {
+      setScanAt(new Date().toISOString());
+      setSaved(false);
+    }
     setScanning(false);
     setProgress(null);
   }
@@ -103,6 +118,9 @@ export function Analyzer({ busy, act, ask }: { busy: boolean; act: Act; ask: Ask
         <div>
           <h2 className="text-xl font-semibold text-slate-100">Disk Analyzer</h2>
           <p className="text-sm text-slate-400">See what uses your space. Links and junctions are not followed, so nothing is counted twice. Deleted files go to the Recycle Bin.</p>
+          <div className="mt-1">
+            <ScanAge at={scanAt} saved={saved} />
+          </div>
         </div>
         <div className="flex gap-2">
           <select value={root} onChange={(e) => setRoot(e.target.value)} aria-label="Folder to analyze" className="rounded-md bg-white/5 px-2 py-1 text-sm text-slate-100 ring-1 ring-white/10" disabled={scanning}>

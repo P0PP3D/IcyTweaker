@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import type { DuplicateGroup, OldFile, PrivacySnapshot, PrivacyTraceView, Progress } from '../../shared/types';
 import { Icon } from '../icons';
-import { Button, FeatureCard, formatBytes, type Ask } from '../ui';
+import { Button, FeatureCard, ScanAge, formatBytes, type Ask } from '../ui';
 import type { Act } from './General';
 
 function RootPicker({ value, onChange }: { value: string; onChange: (v: string) => void }) {
@@ -33,16 +33,31 @@ export function Duplicates({ busy, act, ask }: { busy: boolean; act: Act; ask: A
   const [progress, setProgress] = useState<Progress | null>(null);
   /** Files picked for removal. The first copy of each group starts unpicked (kept). */
   const [picked, setPicked] = useState<Set<string>>(new Set());
+  const [scanAt, setScanAt] = useState<string | null>(null);
   useEffect(() => window.api.onProgress((p) => p.task === 'find' && setProgress(p.current ? p : null)), []);
+  // Suggest keeping the oldest copy of each set, removing the rest.
+  const showGroups = (gs: DuplicateGroup[]) => {
+    setGroups(gs);
+    setPicked(new Set(gs.flatMap((g) => [...g.files].sort((a, b) => a.modified.localeCompare(b.modified)).slice(1).map((f) => f.path))));
+  };
+  useEffect(
+    () =>
+      void window.api.lastScans().then((l) => {
+        if (!l.duplicates) return;
+        setRoot(l.duplicates.root);
+        showGroups(l.duplicates.groups);
+        setScanAt(l.duplicates.at);
+      }),
+    [],
+  );
 
   async function scan() {
     setScanning(true);
     setGroups(null);
     const r = await window.api.findDuplicates(root);
-    setGroups(r.groups);
+    showGroups(r.groups);
     setError(r.error);
-    // Suggest keeping the oldest copy of each set, removing the rest.
-    setPicked(new Set(r.groups.flatMap((g) => [...g.files].sort((a, b) => a.modified.localeCompare(b.modified)).slice(1).map((f) => f.path))));
+    if (!r.error) setScanAt(new Date().toISOString());
     setScanning(false);
   }
 
@@ -71,6 +86,7 @@ export function Duplicates({ busy, act, ask }: { busy: boolean; act: Act; ask: A
         </Button>
         {scanning && <Button onClick={() => window.api.cancelFind()}>Cancel</Button>}
         {progress && <span className="truncate text-xs text-slate-500">{progress.done} files · {progress.current}</span>}
+        {!scanning && <ScanAge at={scanAt} />}
       </div>
       {error && <p className="text-sm text-rose-300">{error}</p>}
       {groups && (
@@ -136,6 +152,18 @@ export function OldFiles({ busy, act, ask }: { busy: boolean; act: Act; ask: Ask
   const [error, setError] = useState<string>();
   const [scanning, setScanning] = useState(false);
   const [picked, setPicked] = useState<Set<string>>(new Set());
+  const [scanAt, setScanAt] = useState<string | null>(null);
+  useEffect(
+    () =>
+      void window.api.lastScans().then((l) => {
+        if (!l.oldfiles) return;
+        setRoot(l.oldfiles.root);
+        setDays(l.oldfiles.days);
+        setFiles(l.oldfiles.files);
+        setScanAt(l.oldfiles.at);
+      }),
+    [],
+  );
 
   async function scan() {
     setScanning(true);
@@ -143,6 +171,7 @@ export function OldFiles({ busy, act, ask }: { busy: boolean; act: Act; ask: Ask
     const r = await window.api.findOldFiles(root, days);
     setFiles(r.files);
     setError(r.error);
+    if (!r.error) setScanAt(new Date().toISOString());
     setPicked(new Set());
     setScanning(false);
   }
@@ -167,6 +196,7 @@ export function OldFiles({ busy, act, ask }: { busy: boolean; act: Act; ask: Ask
           {scanning ? 'Scanning…' : 'Scan'}
         </Button>
         {scanning && <Button onClick={() => window.api.cancelFind()}>Cancel</Button>}
+        {!scanning && <ScanAge at={scanAt} />}
       </div>
       {error && <p className="text-sm text-rose-300">{error}</p>}
       {files && (
