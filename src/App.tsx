@@ -142,14 +142,8 @@ export function App() {
   const [state, setState] = useState<AppState | null>(null);
   const [busy, setBusy] = useState(false);
   const [report, setReport] = useState<(ActionReport & { undo?: () => Promise<ActionReport> }) | null>(null);
-  const [page, setPage] = useState<Page>(() => {
-    try {
-      const saved = localStorage.getItem('lastPage');
-      return PAGES.find((p) => p === saved) ?? 'home';
-    } catch {
-      return 'home';
-    }
-  });
+  // Always opens on Home (owner's pick): closing to the tray destroys the window, so reopening starts here too.
+  const [page, setPage] = useState<Page>('home');
   const [query, setQuery] = useState('');
   const [confirm, setConfirm] = useState<Confirm | null>(null);
   const [collapsed, setCollapsed] = useState(false);
@@ -235,14 +229,6 @@ export function App() {
       }),
     [],
   );
-  // Remember the page between runs.
-  useEffect(() => {
-    try {
-      localStorage.setItem('lastPage', page);
-    } catch {
-      // not remembered this time
-    }
-  }, [page]);
   // Ctrl+K: search.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {

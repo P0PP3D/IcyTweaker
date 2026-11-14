@@ -10,6 +10,7 @@ Each section becomes the description of its GitHub release (see .github/workflow
 **Improved**
 - **Focus Mode apps in one list:** apps you add join the built-in ones, each with its icon. Right-click an app you added to remove it.
 - **Start with Windows runs IcyTweaker at normal priority** (it ran below normal before).
+- **IcyTweaker always opens on Home**, including when you reopen it from the tray, desktop or Start menu.
 
 ## v0.1.12
 
