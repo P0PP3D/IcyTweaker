@@ -66,25 +66,58 @@ export const fanLoop = (dir: string) =>
   'Start-Sleep 2 } } finally { Reset; $c.Close() }';
 
 /**
- * Fan test (an exec: dry-run records it): every controllable fan held at `pct` for `seconds`, then back to the BIOS
- * (finally, so also on errors). Prints "before|Name|rpm" lines, then "after|Name|rpm" lines.
+ * Fan test: all controllable fans set together, held at `pct` for `seconds` once they've reached it, then back to the
+ * BIOS (finally, so also on errors) and waited for until they've settled. Prints "phase|setting / holding / restoring /
+ * done" as it goes, and "before|after|restored|Name|rpm" readings.
  */
 export const fanTestScript = (dir: string, pct: number, seconds: number) =>
   `${libLoad(dir)}if (-not $fans.Count) { [Console]::Out.WriteLine('nofans'); $c.Close(); exit }; ` +
-  "function Rpm($tag) { foreach ($h in $hw) { $h.Update() }; $hw | ForEach-Object { $_.Sensors } | Where-Object { $_.SensorType -eq 'Fan' } | ForEach-Object { [Console]::Out.WriteLine(\"$tag|$($_.Name)|$([math]::Round($_.Value))\") } }; " +
-  `try { Rpm 'before'; foreach ($f in $fans) { $f.Control.SetSoftware(${Math.round(pct)}) }; Start-Sleep ${Math.round(seconds)}; Rpm 'after' } finally { foreach ($f in $fans) { $f.Control.SetDefault() }; $c.Close() }`;
+  'function Say($s) { [Console]::Out.WriteLine($s) }; ' +
+  "function Rpms { foreach ($h in $hw) { $h.Update() }; @($hw | ForEach-Object { $_.Sensors } | Where-Object { $_.SensorType -eq 'Fan' }) }; " +
+  'function Rpm($tag) { Rpms | ForEach-Object { Say "$tag|$($_.Name)|$([math]::Round($_.Value))" } }; ' +
+  // Settled: two readings a second apart within 3 % (at least 30 RPM) for every fan, or after $max seconds.
+  'function Settle($max) { $prev = $null; for ($i = 0; $i -lt $max; $i++) { Start-Sleep 1; $now = @(Rpms | ForEach-Object { [double]$_.Value }); ' +
+  'if ($prev -and $now.Count -eq $prev.Count) { $ok = $true; for ($j = 0; $j -lt $now.Count; $j++) { if ([math]::Abs($now[$j] - $prev[$j]) -gt [math]::Max(30, 0.03 * $prev[$j])) { $ok = $false } }; if ($ok) { return } }; $prev = $now } }; ' +
+  `try { Say 'phase|setting'; Rpm 'before'; foreach ($f in $fans) { $f.Control.SetSoftware(${Math.round(pct)}) }; Settle 15; ` +
+  `Say 'phase|holding'; Start-Sleep ${Math.round(seconds)}; Rpm 'after' } ` +
+  "finally { Say 'phase|restoring'; foreach ($f in $fans) { $f.Control.SetDefault() }; Settle 20; Rpm 'restored'; $c.Close(); Say 'phase|done' }";
 
-/** fanTestScript output -> per fan, its speed before and while held. */
-export function parseFanTest(out: string): Array<{ name: string; before: number | null; after: number | null }> {
-  const rows = new Map<string, { name: string; before: number | null; after: number | null }>();
+export type FanTestRow = { name: string; before: number | null; after: number | null; restored: number | null };
+
+/** fanTestScript output -> per fan, its speed before, while held, and after going back to normal. */
+export function parseFanTest(out: string): FanTestRow[] {
+  const rows = new Map<string, FanTestRow>();
   for (const line of out.split(/\r?\n/)) {
     const [tag, name, rpm] = line.trim().split('|');
-    if ((tag !== 'before' && tag !== 'after') || !name) continue;
-    const row = rows.get(name) ?? { name, before: null, after: null };
+    if ((tag !== 'before' && tag !== 'after' && tag !== 'restored') || !name) continue;
+    const row = rows.get(name) ?? { name, before: null, after: null, restored: null };
     row[tag] = Number.isFinite(Number(rpm)) ? Number(rpm) : null;
     rows.set(name, row);
   }
   return [...rows.values()];
+}
+
+/** Runs the fan test, reporting each phase as it starts; resolves with the whole output once the fans are back to normal. */
+export function runFanTest(dir: string, pct: number, seconds: number, onPhase: (phase: 'setting' | 'holding' | 'restoring' | 'done') => void): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const child = spawn(POWERSHELL_EXE, ['-NoProfile', '-NonInteractive', '-Command', fanTestScript(dir, pct, seconds)], { windowsHide: true });
+    let out = '';
+    let buf = '';
+    child.stdout?.on('data', (b: Buffer) => {
+      out += b.toString();
+      buf += b.toString();
+      const lines = buf.split(/\r?\n/);
+      buf = lines.pop()!;
+      for (const l of lines) {
+        const m = /^phase\|(setting|holding|restoring|done)$/.exec(l.trim());
+        if (m) onPhase(m[1] as 'setting' | 'holding' | 'restoring' | 'done');
+      }
+    });
+    child.on('error', reject);
+    child.on('exit', () => resolve(out));
+    // At most ~50 s by design (15 + hold + 20 + loading); a kill would skip the reset, so allow plenty.
+    setTimeout(() => child.exitCode === null && child.kill(), 120_000).unref();
+  });
 }
 
 /** Read-only reader for the Game Boost page: one JSON line every 2 s (CPU / GPU °C, fan RPM, fan power %). */

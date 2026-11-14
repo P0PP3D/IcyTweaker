@@ -31,7 +31,7 @@ import { captureFrametimes, ensurePresentMon } from './resources/frametime';
 import { BIOS_GUIDES, GENERIC_GUIDE, auditBios, detectHardware } from './advanced/hardware';
 import { advancedTweaks, type MsiDevice } from './advanced/advanced';
 import { DEFAULT_BOOST, createBoost, optionsFor, parsePlans, validateBoost, type BoostSettings } from './games/boost';
-import { FAN_MIN, fanListScript, fanTestScript, parseFanTest, sensorLoop, startFanControl, type FanControl } from './system/fans';
+import { FAN_MIN, fanListScript, parseFanTest, runFanTest, sensorLoop, startFanControl, type FanControl } from './system/fans';
 import { createDebloater } from './system/debloat';
 import { fixes } from './tweaks/fixes';
 import { serviceTweaks } from './services/catalog';
@@ -901,16 +901,23 @@ app.whenReady().then(async () => {
         if (!existsSync(path.join(lhmDir, 'LibreHardwareMonitorLib.dll'))) return { ok: false, message: 'Set up CPU temperature first: fan control uses the same reader.' };
         if (live && !admin) return { ok: false, message: 'Testing fans needs IcyTweaker to run as administrator.' };
         if (fanCtl) return { ok: false, message: 'A game\'s fan curve is running. Close the game first.' };
+        if (!live) {
+          await safety.log('fan-test', `${p} %`, true, 'dry-run: fans not changed');
+          return { ok: true, message: `Dry-run: the fans would be held at ${p} % for 10 seconds.` };
+        }
+        // Streams its phases (a one-shot exec can't), so live only: dry-run returned above and never touches the fans.
+        const PHASE = { setting: 'Setting the fans…', holding: `Holding at ${p} %`, restoring: 'Returning the fans to normal…', done: '' };
         try {
-          const { stdout } = await adapter.exec(POWERSHELL_EXE, ['-NoProfile', '-NonInteractive', '-Command', fanTestScript(lhmDir, p, 10)], 60_000);
-          await safety.log('fan-test', `${p} %`, true, live ? undefined : 'dry-run: fans not changed');
-          if (!live) return { ok: true, message: `Dry-run: the fans would be held at ${p} % for 10 seconds.` };
-          if (/nofans/.test(stdout)) return { ok: false, message: 'No fans on this PC can be controlled by IcyTweaker. Nothing was changed.' };
-          const rows = parseFanTest(stdout).filter((r) => r.before || r.after);
-          const detail = rows.map((r) => `${r.name}: ${r.before ?? '?'} → ${r.after ?? '?'} RPM`).join(', ');
-          return { ok: true, message: `Fans held at ${p} % for 10 seconds, then given back to the BIOS.${detail ? ` ${detail}.` : ''}` };
+          const out = await runFanTest(lhmDir, p, 10, (ph) => progress({ task: 'fan-test', done: ph === 'holding' ? 1 : 0, total: ph === 'done' ? 0 : 10, current: PHASE[ph] }));
+          if (/nofans/.test(out)) return { ok: false, message: 'No fans on this PC can be controlled by IcyTweaker. Nothing was changed.' };
+          await safety.log('fan-test', `${p} %`, true);
+          const rows = parseFanTest(out).filter((r) => r.before || r.after);
+          const detail = rows.map((r) => `${r.name}: ${r.before ?? '?'} → ${r.after ?? '?'} → ${r.restored ?? '?'} RPM`).join(', ');
+          return { ok: true, message: `Fans held at ${p} % for 10 seconds and now back to normal.${detail ? ` Before → during → after: ${detail}.` : ''}` };
         } catch (err) {
           return { ok: false, message: `Fan test failed: ${(err as Error).message}. The fans are back on BIOS control.` };
+        } finally {
+          progress({ task: 'fan-test', done: 0, total: 0, current: '' });
         }
       },
 

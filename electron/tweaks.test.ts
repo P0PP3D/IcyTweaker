@@ -247,6 +247,18 @@ describe('engine', () => {
     expect(fake.commands.some((c) => c.join(' ').includes('Checkpoint-Computer'))).toBe(false);
   });
 
+  it('launch re-check: an undone tweak is reported, but not one Windows protects (re-applying is refused)', async () => {
+    const { fake, safety } = await setup();
+    const engine = createEngine({ ...opts, safety, build: 26100 });
+    const dsh = { kind: 'reg' as const, hive: 'HKLM' as const, key: 'SOFTWARE\\Policies\\Microsoft\\Dsh', name: 'AllowNewsAndInterests' };
+    const plain = generalTweaks.find((t) => t.id === 'taskbar-left')!;
+    expect((await engine.setTweak('widgets-off', true)).ok).toBe(true);
+    expect((await engine.setTweak(plain.id, true)).ok).toBe(true);
+    await fake.write(dsh, null); // Windows removes both values
+    await fake.write({ kind: 'reg', hive: 'HKCU', key: 'Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\Advanced', name: 'TaskbarAl' }, null);
+    expect((await engine.drifted()).map((d) => d.id)).toEqual([plain.id]);
+  });
+
   it('Apply All: restore point first, applies every non-Risky tweak, logs each one', async () => {
     const { fake, safety, dir } = await setup();
     const engine = createEngine({ ...opts, safety });

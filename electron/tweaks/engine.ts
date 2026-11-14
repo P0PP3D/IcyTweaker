@@ -394,12 +394,13 @@ export function createEngine(o: {
     /**
      * Tweaks the app applied that are no longer applied (usually a Windows update put a value back).
      * Adjustable tweaks are left out (the chosen value isn't stored), and so is the active power plan,
-     * which Game Boost changes on purpose during a session.
+     * which Game Boost changes on purpose during a session. So are settings Windows protects (findInDebloater):
+     * re-applying them is refused, so the notice would come back on every start (Widgets Off after Widgets is removed).
      */
     async drifted() {
       const st = await statuses();
       return tweaks
-        .filter((t, i) => !t.options && st[i] !== 'applied' && st[i] !== 'unavailable' && refsOf(t).some((r) => r.kind !== 'activeScheme' && safety.savedAt(r)))
+        .filter((t, i) => !t.options && !t.findInDebloater && st[i] !== 'applied' && st[i] !== 'unavailable' && refsOf(t).some((r) => r.kind !== 'activeScheme' && safety.savedAt(r)))
         .map((t) => ({ id: t.id, name: t.name, risk: t.risk }));
     },
 

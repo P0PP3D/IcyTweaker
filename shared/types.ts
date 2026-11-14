@@ -278,7 +278,7 @@ export interface DisplayMode {
 }
 
 export interface BoostState {
-  settings: BoostOptions & { enabled: boolean; perGame: Record<string, BoostOptions> };
+  settings: BoostOptions & { enabled: boolean; perGame: Record<string, BoostOptions>; fanProfiles?: Array<{ name: string; curve: FanPoint[] }> };
   /** The running session, or null when no game is being boosted. */
   active: { game: string; since: string; plan: string | null; lowered: number } | null;
   apps: Array<{ exe: string; name: string }>;
@@ -696,7 +696,7 @@ export interface ActionReport {
 
 /** Progress of a long task. For 'analyze', done = files scanned and total = 0 (unknown). */
 export interface Progress {
-  task: 'uninstall' | 'scan' | 'clean' | 'analyze' | 'system-check' | 'runtimes' | 'net-test' | 'driver' | 'frametime' | 'find' | 'update' | 'restore-point' | 'restart' | 'benchmark' | 'drivers' | 'bulk';
+  task: 'uninstall' | 'scan' | 'clean' | 'analyze' | 'system-check' | 'runtimes' | 'net-test' | 'driver' | 'frametime' | 'find' | 'update' | 'restore-point' | 'restart' | 'benchmark' | 'drivers' | 'bulk' | 'fan-test';
   done: number;
   total: number;
   current: string;

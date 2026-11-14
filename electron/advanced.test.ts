@@ -308,6 +308,9 @@ describe('fan curves', () => {
     expect(v.perGame.valorant.fanCurve).toEqual(good);
     expect(v.perGame.fortnite.fanCurve).toBeNull();
     expect(v.fanCurve).toBeNull();
+    // Saved profiles: named, valid, unique names.
+    const p = validateBoost({ ...DEFAULT_BOOST, fanProfiles: [{ name: ' Quiet\n', curve: good }, { name: 'quiet', curve: good }, { name: 'Bad', curve: [{ t: 40, pct: 5 }] }, { name: '', curve: good }] }, [])!;
+    expect(p.fanProfiles).toEqual([{ name: 'Quiet', curve: good }]);
   });
 });
 
@@ -316,10 +319,12 @@ describe('fan test', () => {
     const { fanTestScript, parseFanTest } = await import('./system/fans');
     const s = fanTestScript('C:\\tools\\lhm', 70, 10);
     expect(s).toContain('SetSoftware(70)');
-    expect(s).toMatch(/finally \{ foreach \(\$f in \$fans\) \{ \$f\.Control\.SetDefault\(\) \}/);
-    expect(parseFanTest('before|CPU Fan|900\r\nbefore|Fan #2|0\r\nafter|CPU Fan|1450\r\nnoise\r\nafter|Fan #2|700\r\n')).toEqual([
-      { name: 'CPU Fan', before: 900, after: 1450 },
-      { name: 'Fan #2', before: 0, after: 700 },
+    expect(s).toMatch(/finally \{ Say 'phase\|restoring'; foreach \(\$f in \$fans\) \{ \$f\.Control\.SetDefault\(\) \}; Settle 20;/); // back to normal, then waits for it
+    // All fans are set first and must settle before the 10 s hold starts.
+    expect(s.indexOf("Say 'phase|holding'")).toBeGreaterThan(s.indexOf('Settle 15'));
+    expect(parseFanTest('before|CPU Fan|900\r\nbefore|Fan #2|0\r\nafter|CPU Fan|1450\r\nnoise\r\nafter|Fan #2|700\r\nrestored|CPU Fan|910\r\n')).toEqual([
+      { name: 'CPU Fan', before: 900, after: 1450, restored: 910 },
+      { name: 'Fan #2', before: 0, after: 700, restored: null },
     ]);
   });
 });

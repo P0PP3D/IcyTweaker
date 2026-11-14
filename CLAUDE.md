@@ -263,7 +263,10 @@ Full spec: `docs/SPEC.md`. Work one phase of its "Build order" at a time.
   85 °C). Main starts `startFanControl` on a boost start (live + admin + LHM only; dry-run only logs), stops it on end
   and quit. Node computes the duty (`fanDuty`); the PowerShell helper reads one order per round from stdin and calls
   SetDefault on stop / closed pipe / exit. `fanChannels` = read-only list. verify: SetSoftware on real boards.
-  `testFans(pct)` = adapter.exec of `fanTestScript` (10 s, finally SetDefault; refused during a curve session).
+  `testFans(pct)` = `runFanTest` (live only; dry-run returns first): sets all fans, waits until RPM settles, holds 10 s,
+  finally SetDefault + waits until settled; phases -> progress task 'fan-test' -> SensorPanel. Refused during a curve
+  session. Fan curve presets (`FAN_PRESETS`, Games.tsx) + `BoostSettings.fanProfiles` (user curves, 20 max, validated).
+  `drifted()` skips `findInDebloater` tweaks (re-applying is refused; the notice came back every start).
   `sensorsNow` = read-only `sensorLoop` reader (CPU/GPU °C, fan RPM / %), started on ask, killed 10 s after the last
   ask: it only runs while the Game Boost page polls it. Pages: 'games' (profiles), 'boost' (`BoostPage`: sensors +
   Game Boost + overlay), 'performance' (`PerformancePage`), all in Games.tsx.

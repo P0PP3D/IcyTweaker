@@ -59,6 +59,8 @@ export interface BoostSettings extends BoostOptions {
   enabled: boolean;
   /** Game id -> its own options. */
   perGame: Record<string, BoostOptions>;
+  /** The user's saved fan curves (picked from in the fan curve editor of any game). */
+  fanProfiles?: Array<{ name: string; curve: FanPoint[] }>;
 }
 export const DEFAULT_BOOST: BoostSettings = {
   enabled: false,
@@ -251,5 +253,12 @@ export function validateBoost(raw: unknown, gameIds: string[]): BoostSettings | 
     const o = opts(v);
     if (gameIds.includes(id) && o) perGame[id] = o;
   }
-  return { ...base, enabled: r.enabled, perGame };
+  // Saved fan curves: a name (control characters dropped, 40 characters) and a valid curve; 20 at most, names unique.
+  const fanProfiles: Array<{ name: string; curve: FanPoint[] }> = [];
+  for (const x of Array.isArray(r.fanProfiles) ? r.fanProfiles : []) {
+    const name = typeof x?.name === 'string' ? x.name.replace(/[\x00-\x1f\x7f]/g, ' ').trim().slice(0, 40) : '';
+    const curve = validateCurve(x?.curve);
+    if (name && curve && !fanProfiles.some((p) => p.name.toLowerCase() === name.toLowerCase()) && fanProfiles.length < 20) fanProfiles.push({ name, curve });
+  }
+  return { ...base, enabled: r.enabled, perGame, fanProfiles };
 }

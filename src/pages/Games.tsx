@@ -307,7 +307,15 @@ function GameBoost({ busy, act }: { busy: boolean; act: Act }) {
             ))}
           </div>
         </div>
-        <FanCurveEditor key={scope} curve={o.fanCurve ?? null} disabled={busy || !editable} act={act} onChange={(fanCurve) => edit({ fanCurve })} />
+        <FanCurveEditor
+          key={scope}
+          curve={o.fanCurve ?? null}
+          disabled={busy || !editable}
+          act={act}
+          onChange={(fanCurve) => edit({ fanCurve })}
+          profiles={s.fanProfiles ?? []}
+          onProfiles={(fanProfiles) => saveAll({ ...s, fanProfiles })}
+        />
         {!editable && <p className="text-xs text-slate-500">This game uses the defaults. Tick "Use its own settings" to change them for it only.</p>}
       </div>
 
@@ -359,6 +367,23 @@ function SensorPanel({ busy, act }: { busy: boolean; act: Act }) {
   const [r, setR] = useState<SensorReading | null>(null);
   const [pct, setPct] = useState(70);
   const [testing, setTesting] = useState(false);
+  // Fan test phases from main: "Setting the fans…", "Holding at N %" (then a countdown here), "Returning the fans to normal…".
+  const [phase, setPhase] = useState<{ text: string; holdUntil: number | null } | null>(null);
+  const [, tick] = useState(0);
+  useEffect(
+    () =>
+      window.api.onProgress((p) => {
+        if (p.task !== 'fan-test') return;
+        setPhase(p.current ? { text: p.current, holdUntil: p.done === 1 ? Date.now() + 10_000 : null } : null);
+      }),
+    [],
+  );
+  useEffect(() => {
+    if (!phase?.holdUntil) return;
+    const t = setInterval(() => tick((n) => n + 1), 250);
+    return () => clearInterval(t);
+  }, [phase]);
+  const left = phase?.holdUntil ? Math.max(0, Math.ceil((phase.holdUntil - Date.now()) / 1000)) : null;
   useEffect(() => {
     const read = () => !document.hidden && void window.api.sensorsNow().then(setR, () => {});
     read();
@@ -374,10 +399,12 @@ function SensorPanel({ busy, act }: { busy: boolean; act: Act }) {
   );
   const test = async () => {
     setTesting(true);
+    setPhase({ text: 'Setting the fans…', holdUntil: null });
     try {
-      await act(() => window.api.testFans(pct));
+      await act(() => window.api.testFans(pct)); // resolves (and shows its message) only once the fans are back to normal
     } finally {
       setTesting(false);
+      setPhase(null);
     }
   };
 
@@ -422,9 +449,18 @@ function SensorPanel({ busy, act }: { busy: boolean; act: Act }) {
           <div className="flex flex-wrap items-center gap-3 border-t border-[var(--line)] pt-3 text-sm">
             <span className="min-w-0 flex-1">
               <span className="block text-slate-200">Test fan speed</span>
-              <span className="block text-xs text-slate-500">
-                Holds every fan IcyTweaker can control at this speed for 10 seconds, so you can hear and see (RPM above) what a curve setting does. Then the BIOS takes them back.
-              </span>
+              {testing && phase ? (
+                <span className="mt-0.5 flex items-center gap-2 text-xs text-sky-300" aria-live="polite">
+                  {left === null && <span className="h-3 w-3 animate-spin rounded-full border-2 border-sky-500/25 border-t-sky-400" aria-hidden />}
+                  {phase.text}
+                  {left !== null && <span className="tabular-nums">· {left} s left</span>}
+                </span>
+              ) : (
+                <span className="block text-xs text-slate-500">
+                  Sets every fan IcyTweaker can control to this speed, holds it for 10 seconds once they've got there, then hands them back to the BIOS and waits until they've
+                  settled. Watch the RPM above change.
+                </span>
+              )}
             </span>
             <input
               type="range"
@@ -515,14 +551,55 @@ const DEFAULT_CURVE: FanPoint[] = [
   { t: 75, pct: 75 },
   { t: 85, pct: 100 },
 ];
+/** Built-in curves, offered next to the user's own. */
+const FAN_PRESETS: Array<{ name: string; text: string; curve: FanPoint[] }> = [
+  { name: 'Balanced', text: 'Quiet when cool, ramps up steadily under load.', curve: DEFAULT_CURVE },
+  {
+    name: 'Silent',
+    text: 'As quiet as possible; speeds up only when the CPU gets warm.',
+    curve: [
+      { t: 45, pct: 30 },
+      { t: 65, pct: 40 },
+      { t: 75, pct: 60 },
+      { t: 82, pct: 85 },
+    ],
+  },
+  {
+    name: 'Performance',
+    text: 'Fans spin up early to keep the CPU as cool as possible. Louder.',
+    curve: [
+      { t: 35, pct: 50 },
+      { t: 50, pct: 65 },
+      { t: 65, pct: 85 },
+      { t: 75, pct: 100 },
+    ],
+  },
+];
+const sameCurve = (a: FanPoint[], b: FanPoint[]) => a.length === b.length && a.every((p, i) => p.t === b[i].t && p.pct === b[i].pct);
 
 /**
  * Game Boost fan curve: CPU temperature -> fan speed for the motherboard's fans while the game runs. Drag the points
  * on the chart or type exact values. Saved when a drag ends (not on every move).
  */
-function FanCurveEditor({ curve, disabled, act, onChange }: { curve: FanPoint[] | null; disabled: boolean; act: Act; onChange: (c: FanPoint[] | null) => void }) {
+function FanCurveEditor({
+  curve,
+  disabled,
+  act,
+  onChange,
+  profiles,
+  onProfiles,
+}: {
+  curve: FanPoint[] | null;
+  disabled: boolean;
+  act: Act;
+  onChange: (c: FanPoint[] | null) => void;
+  /** The user's saved curves (shared by every game). */
+  profiles: Array<{ name: string; curve: FanPoint[] }>;
+  onProfiles: (p: Array<{ name: string; curve: FanPoint[] }>) => void;
+}) {
   const [pts, setPts] = useState<FanPoint[]>(curve ?? DEFAULT_CURVE);
   const [drag, setDrag] = useState<number | null>(null);
+  const [naming, setNaming] = useState<string | null>(null); // "Save as profile" name being typed
   const [fans, setFans] = useState<{ ready: boolean; admin: boolean; channels: string[] } | null>(null);
   // The panel reloads settings every 3 s (new objects): follow only real changes, and never mid-drag.
   const saved = JSON.stringify(curve);
@@ -547,6 +624,9 @@ function FanCurveEditor({ curve, disabled, act, onChange }: { curve: FanPoint[] 
     setPts(c);
     if (on && c.length >= 2) onChange(c);
   };
+  // Profile picker: presets first, then the user's own; the one matching the curve shown (none = "Custom").
+  const choices = [...FAN_PRESETS.map((p) => ({ key: `preset:${p.name}`, curve: p.curve })), ...profiles.map((p) => ({ key: `mine:${p.name}`, curve: p.curve }))];
+  const matched = choices.find((c) => sameCurve(c.curve, clean(pts)));
   const move = (e: React.PointerEvent<SVGSVGElement>) => {
     if (drag === null) return;
     const r = e.currentTarget.getBoundingClientRect();
@@ -584,6 +664,87 @@ function FanCurveEditor({ curve, disabled, act, onChange }: { curve: FanPoint[] 
         The motherboard's fans follow your CPU temperature while this game runs, and go back to the BIOS settings when it closes. They never drop below {FAN.min} % and run at 100 % from {FAN.panic} °C.
         Works on most desktop motherboards; most laptops don't allow it.
       </p>
+      <div className="flex flex-wrap items-center gap-2 text-sm">
+        <span className="text-slate-400">Profile</span>
+        <select
+          value={matched ? matched.key : ''}
+          disabled={disabled}
+          onChange={(e) => {
+            const pick = choices.find((c) => c.key === e.target.value);
+            if (pick) {
+              setPts(pick.curve);
+              onChange(pick.curve); // picking one also turns the curve on
+            }
+          }}
+          aria-label="Fan curve profile"
+          className="rounded-md bg-white/5 px-2 py-0.5 text-sm text-slate-100 ring-1 ring-white/10 disabled:opacity-40"
+        >
+          {!matched && <option value="">Custom</option>}
+          <optgroup label="Presets">
+            {FAN_PRESETS.map((p) => (
+              <option key={p.name} value={`preset:${p.name}`}>
+                {p.name}
+              </option>
+            ))}
+          </optgroup>
+          {profiles.length > 0 && (
+            <optgroup label="Your profiles">
+              {profiles.map((p) => (
+                <option key={p.name} value={`mine:${p.name}`}>
+                  {p.name}
+                </option>
+              ))}
+            </optgroup>
+          )}
+        </select>
+        {matched?.key.startsWith('preset:') && <span className="text-xs text-slate-500">{FAN_PRESETS.find((p) => `preset:${p.name}` === matched.key)?.text}</span>}
+        {naming === null ? (
+          <>
+            <button type="button" disabled={disabled || profiles.length >= 20} onClick={() => setNaming('')} className="text-xs text-sky-300 hover:underline disabled:opacity-40">
+              Save as profile…
+            </button>
+            {matched?.key.startsWith('mine:') && (
+              <button
+                type="button"
+                disabled={disabled}
+                onClick={() => onProfiles(profiles.filter((p) => `mine:${p.name}` !== matched.key))}
+                className="text-xs text-slate-400 hover:text-rose-300 disabled:opacity-40"
+              >
+                Delete this profile
+              </button>
+            )}
+          </>
+        ) : (
+          <form
+            className="flex items-center gap-1.5"
+            onSubmit={(e) => {
+              e.preventDefault();
+              const name = naming.trim().slice(0, 40);
+              if (!name) return;
+              // Same name: replaces that profile.
+              onProfiles([...profiles.filter((p) => p.name.toLowerCase() !== name.toLowerCase()), { name, curve: clean(pts) }]);
+              setNaming(null);
+            }}
+          >
+            <input
+              autoFocus
+              value={naming}
+              maxLength={40}
+              onChange={(e) => setNaming(e.target.value)}
+              onKeyDown={(e) => e.key === 'Escape' && setNaming(null)}
+              placeholder="Profile name"
+              aria-label="Profile name"
+              className="w-36 rounded bg-white/5 px-2 py-0.5 text-sm text-slate-100 ring-1 ring-white/10"
+            />
+            <button type="submit" disabled={!naming.trim()} className="text-xs text-sky-300 hover:underline disabled:opacity-40">
+              Save
+            </button>
+            <button type="button" onClick={() => setNaming(null)} className="text-xs text-slate-400 hover:text-slate-200">
+              Cancel
+            </button>
+          </form>
+        )}
+      </div>
       {fans &&
         (!fans.ready ? (
           <div className="flex flex-wrap items-center gap-2 text-xs text-amber-300">
