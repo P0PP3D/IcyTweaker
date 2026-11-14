@@ -289,6 +289,7 @@ export function createEngine(o: {
           page: t.page,
           group: t.group,
           needsClosed: t.needsClosed,
+          findInDebloater: t.findInDebloater,
           currentOption: t.options ? (opts[i] ?? null) : undefined,
           hardware: t.hardware,
           anticheat: t.anticheat,

@@ -6,7 +6,8 @@ import type { Act } from './General';
 
 type Sort = 'name' | 'size' | 'date' | 'used';
 
-export function Debloater({ busy, act, ask }: { busy: boolean; act: Act; ask: Ask }) {
+/** find: opened from a tweak card ("Remove in Debloater"): Store apps, filtered to that search. */
+export function Debloater({ busy, act, ask, find }: { busy: boolean; act: Act; ask: Ask; find?: { q: string; n: number } | null }) {
   const [apps, setApps] = useState<AppItem[] | null>(null);
   const [error, setError] = useState<string | undefined>();
   const [tab, setTab] = useState<'desktop' | 'store' | 'unused'>('desktop');
@@ -25,6 +26,19 @@ export function Debloater({ busy, act, ask }: { busy: boolean; act: Act; ask: As
     void window.api.appIcons().then(setIcons, () => {}); // after the list: icons fill in without holding it up
   }, []);
   useEffect(() => void load(), [load]);
+  useEffect(() => {
+    if (!find) return;
+    setTab('store');
+    setFilter(find.q);
+  }, [find]);
+  // ...and the matching app ticked once the list is in (Uninstall still asks first). Once per search.
+  const [ticked, setTicked] = useState(0);
+  useEffect(() => {
+    if (!find || !apps || ticked === find.n) return;
+    setTicked(find.n);
+    const q = find.q.toLowerCase();
+    setSelected(new Set(apps.filter((a) => a.kind === 'store' && !a.protected && a.name.toLowerCase().includes(q)).map((a) => a.key)));
+  }, [find, apps, ticked]);
   useEffect(() => window.api.onProgress((p) => p.task === 'uninstall' && setProgress(p)), []);
 
   const shown = useMemo(() => {

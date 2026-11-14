@@ -28,6 +28,8 @@ export interface TweakMeta {
   needsClosed?: string[];
   /** Shown instead of "Access is denied" when Windows protects the setting from other programs. */
   deniedHint?: string;
+  /** Windows blocks the setting itself: the card offers "Remove in Debloater" (Store apps, this search) instead of a switch. */
+  findInDebloater?: string;
   /** Hardware it is meant for: laptop false = desktops only; ssd true = SSDs only. */
   hardware?: { laptop?: boolean; ssd?: boolean };
   /** Anti-cheats that may object, and how. */
@@ -247,6 +249,12 @@ export interface AuditItem {
   detail: string;
 }
 
+/** One fan curve point: at `t` °C (CPU), fans at `pct` %. */
+export interface FanPoint {
+  t: number;
+  pct: number;
+}
+
 export interface BoostOptions {
   plan: boolean;
   /** A specific power plan GUID; null = best performance plan available. */
@@ -260,6 +268,8 @@ export interface BoostOptions {
   display?: DisplayMode | null;
   /** Do Not Disturb during play (notification banners off, put back after). */
   quietNotifications?: boolean;
+  /** Fan curve during play (CPU °C -> fan %), null = leave the fans to the BIOS. */
+  fanCurve?: FanPoint[] | null;
 }
 export interface DisplayMode {
   width: number;
@@ -1011,6 +1021,8 @@ export interface OptimizerApi {
   focusApps(): Promise<{ choices: Array<{ exe: string; name: string }>; installed: string[] }>;
   /** Icons for the Focus Mode apps (exe -> data URL, null: none found). Read-only. */
   focusIcons(): Promise<Record<string, string | null>>;
+  /** Fan channels a Game Boost fan curve can control. ready false = the temperature reader isn't set up. */
+  fanChannels(): Promise<{ ready: boolean; admin: boolean; channels: string[] }>;
   /** Turn Focus Mode on or off. */
   setFocus(on: boolean): Promise<ActionReport>;
   /** Everything in the Recycle Bin, newest deleted first. */

@@ -271,3 +271,42 @@ describe('Open task (no-prompt shortcuts)', () => {
     expect(xml).not.toContain('<Triggers>');
   });
 });
+
+describe('fan curves', () => {
+  it('validates curves: 2-8 rising points, 30-95 °C, never under the floor', async () => {
+    const { validateCurve, FAN_MIN } = await import('./system/fans');
+    expect(validateCurve([{ t: 70, pct: 80 }, { t: 40, pct: 35 }])).toEqual([{ t: 40, pct: 35 }, { t: 70, pct: 80 }]); // sorted
+    expect(validateCurve([{ t: 40, pct: FAN_MIN - 1 }, { t: 70, pct: 80 }])).toBeNull(); // fans would slow too much
+    expect(validateCurve([{ t: 40, pct: 40 }, { t: 40, pct: 60 }])).toBeNull(); // same temperature twice
+    expect(validateCurve([{ t: 10, pct: 40 }, { t: 70, pct: 60 }])).toBeNull();
+    expect(validateCurve([{ t: 40, pct: 40 }])).toBeNull();
+    expect(validateCurve('nope')).toBeNull();
+  });
+  it('interpolates, keeps the floor, goes to 100 % when hot, hands back to the BIOS when blind', async () => {
+    const { fanDuty, FAN_PANIC } = await import('./system/fans');
+    const curve = [{ t: 40, pct: 40 }, { t: 60, pct: 60 }, { t: 80, pct: 90 }];
+    expect(fanDuty(curve, 30)).toBe(40);
+    expect(fanDuty(curve, 50)).toBe(50);
+    expect(fanDuty(curve, 70)).toBe(75);
+    expect(fanDuty(curve, 82)).toBe(90);
+    expect(fanDuty(curve, FAN_PANIC)).toBe(100);
+    expect(fanDuty(curve, null)).toBeNull();
+    expect(fanDuty(curve, 0)).toBeNull(); // a 0 °C reading means the sensor isn't readable
+  });
+  it('the helper resets the fans when told to stop, when our pipe closes, and on any exit', async () => {
+    const { fanLoop } = await import('./system/fans');
+    const s = fanLoop('C:\\tools\\lhm');
+    expect(s).toContain("if ($null -eq $o -or $o -eq 'stop') { break }");
+    expect(s).toContain('finally { Reset;');
+    expect(s).toContain("if ($o -eq 'default') { Reset }");
+    expect(s).toMatch(/\$d -ge 30 -and \$d -le 100/); // out-of-range orders reset instead of applying
+  });
+  it('Game Boost keeps a valid curve per game and drops a bad one', async () => {
+    const { validateBoost } = await import('./games/boost');
+    const good = [{ t: 40, pct: 40 }, { t: 80, pct: 100 }];
+    const v = validateBoost({ ...DEFAULT_BOOST, perGame: { valorant: { ...DEFAULT_BOOST, fanCurve: good }, fortnite: { ...DEFAULT_BOOST, fanCurve: [{ t: 40, pct: 5 }, { t: 80, pct: 100 }] } } }, ['valorant', 'fortnite'])!;
+    expect(v.perGame.valorant.fanCurve).toEqual(good);
+    expect(v.perGame.fortnite.fanCurve).toBeNull();
+    expect(v.fanCurve).toBeNull();
+  });
+});

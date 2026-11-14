@@ -259,3 +259,9 @@ Full spec: `docs/SPEC.md`. Work one phase of its "Build order" at a time.
 - Game settings check: `games.ts` keeps the values each apply wrote in `game-applied.json` (data dir, per mode);
   `reverted(p)` = keys no longer matching -> `GameView.reverted` (card warning) and a notification when Game Boost
   sees the game close. Reset clears the record.
+- Fan curves (`system/fans.ts`): Boost option `fanCurve` (2-8 points, 30-95 °C, `FAN_MIN` 30 %, 100 % from `FAN_PANIC`
+  85 °C). Main starts `startFanControl` on a boost start (live + admin + LHM only; dry-run only logs), stops it on end
+  and quit. Node computes the duty (`fanDuty`); the PowerShell helper reads one order per round from stdin and calls
+  SetDefault on stop / closed pipe / exit. `fanChannels` = read-only list. verify: SetSoftware on real boards.
+- `TweakMeta.findInDebloater`: the card shows "Remove in Debloater" (event `icy:debloat` -> App -> Debloater `find`:
+  Store tab, filter, matching unprotected app ticked) instead of the switch while not applied. Used by Widgets Off.

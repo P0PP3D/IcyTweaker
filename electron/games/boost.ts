@@ -7,7 +7,8 @@ import type { BoostState } from '../../shared/types';
 import { POWERSHELL_EXE, SC_EXE, dword, runningProcesses, type SettingRef, type Value } from '../system/adapter';
 import type { Safety } from '../system/safety';
 import { purgeStandby } from '../system/memory';
-import type { DisplayMode } from '../../shared/types';
+import type { DisplayMode, FanPoint } from '../../shared/types';
+import { validateCurve } from '../system/fans';
 import { setDisplayMode, validMode } from '../system/monitors';
 import { CORE_PLAN } from '../tweaks/general';
 
@@ -47,6 +48,8 @@ export interface BoostOptions {
   display?: DisplayMode | null;
   /** Do Not Disturb during play: notification banners off, your setting put back after. */
   quietNotifications?: boolean;
+  /** Fan curve during play (system/fans.ts, run by main); null = the BIOS keeps the fans. */
+  fanCurve?: FanPoint[] | null;
 }
 
 /** Settings > System > Notifications, the main switch (absent = on). Read on the dev PC's key, 2026-11.
@@ -84,13 +87,14 @@ export function createBoost(
   safety: Safety,
   games: Array<{ id: string; name: string; exe: string[] }>,
   initial: BoostSettings,
-  onEvent?: (e: 'start' | 'end', game: string) => void,
+  onEvent?: (e: 'start' | 'end', game: string, id: string) => void,
   /** true while on battery: the power plan is left alone (Devices > laptop profile). */
   onBattery: () => boolean = () => false,
 ) {
   let settings = initial;
   let session: {
     game: string;
+    id: string;
     since: string;
     prevScheme: string | null;
     plan: string | null;
@@ -150,8 +154,8 @@ export function createBoost(
         // notifications stay as they were
       }
     }
-    session = { game: game.name, since: new Date().toISOString(), prevScheme: plan ? prev : null, plan: plan?.name ?? null, lowered, updatesStopped, oneDrive, display, quiet };
-    onEvent?.('start', game.name);
+    session = { game: game.name, id: game.id, since: new Date().toISOString(), prevScheme: plan ? prev : null, plan: plan?.name ?? null, lowered, updatesStopped, oneDrive, display, quiet };
+    onEvent?.('start', game.name, game.id);
     const parts = [
       plan ? `plan ${plan.name}` : 'plan unchanged',
       `${lowered.length} app process(es) lowered`,
@@ -167,7 +171,7 @@ export function createBoost(
     if (!session) return;
     const s = session;
     session = null;
-    onEvent?.('end', s.game);
+    onEvent?.('end', s.game, s.id);
     const errors: string[] = [];
     // Writing the previous plan back drops the backup entry if it was the original.
     if (s.prevScheme) await safety.set(ACTIVE, s.prevScheme).catch((e: Error) => errors.push(e.message));
@@ -236,6 +240,7 @@ export function validateBoost(raw: unknown, gameIds: string[]): BoostSettings | 
       purgeStandby: o.purgeStandby === true,
       display: validMode(o.display),
       quietNotifications: o.quietNotifications === true,
+      fanCurve: o.fanCurve ? validateCurve(o.fanCurve) : null,
     };
   };
   const r = raw as Partial<BoostSettings> | null;

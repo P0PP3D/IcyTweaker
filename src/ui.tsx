@@ -230,7 +230,7 @@ export function TweakRow({
       <span className={clsx('w-28 text-right text-xs', on ? 'text-sky-300' : t.status === 'partial' ? 'text-amber-300' : 'text-slate-500')}>
         {statusText[t.status]}
       </span>
-      <Toggle on={on} partial={t.status === 'partial'} label={t.name} disabled={disabled} onChange={onToggle} />
+      {t.findInDebloater && !on ? <DebloaterLink t={t} disabled={busy} /> : <Toggle on={on} partial={t.status === 'partial'} label={t.name} disabled={disabled} onChange={onToggle} />}
     </li>
   );
 }
@@ -340,12 +340,28 @@ export function TweakCard({
                 </button>
               )}
             </div>
+          ) : t.findInDebloater && !on ? (
+            <DebloaterLink t={t} disabled={busy} />
           ) : (
             <Toggle on={on} partial={t.status === 'partial'} label={t.name} disabled={disabled} onChange={onToggle} />
           )}
         </div>
       </div>
     </li>
+  );
+}
+
+/**
+ * For settings Windows won't let programs change (Widgets): opens the Debloater on its Store apps, already searched
+ * for the package. App handles the icy:debloat event (switches page and passes the search on).
+ */
+function DebloaterLink({ t, disabled }: { t: TweakView; disabled: boolean }) {
+  return (
+    <span title="Windows doesn't let other programs change this setting. Removing the app behind it works instead.">
+      <Button disabled={disabled} onClick={() => window.dispatchEvent(new CustomEvent('icy:debloat', { detail: t.findInDebloater }))}>
+        Remove in Debloater
+      </Button>
+    </span>
   );
 }
 

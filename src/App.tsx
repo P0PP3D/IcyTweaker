@@ -215,6 +215,16 @@ export function App() {
     // And back: Advanced has no Clean up / Games / Undo items (they'd render with nothing highlighted).
     if (mode === 'advanced' && (page === 'cleanup' || page === 'play' || page === 'undo')) setPage('home');
   }, [mode, page]);
+  // A tweak card's "Remove in Debloater": open it with that search (n: the same search again re-applies).
+  const [debloatFind, setDebloatFind] = useState<{ q: string; n: number } | null>(null);
+  useEffect(() => {
+    const on = (e: Event) => {
+      setDebloatFind((f) => ({ q: String((e as CustomEvent<string>).detail), n: (f?.n ?? 0) + 1 }));
+      setPage('debloater');
+    };
+    window.addEventListener('icy:debloat', on);
+    return () => window.removeEventListener('icy:debloat', on);
+  }, []);
   // Settings switches modes through this event.
   useEffect(() => {
     const onMode = (e: Event) => setMode((e as CustomEvent<AppMode>).detail);
@@ -363,7 +373,7 @@ export function App() {
     ) : id === 'general' ? (
               <General {...pageProps} />
             ) : id === 'debloater' ? (
-              <Debloater {...pageProps} />
+              <Debloater {...pageProps} find={debloatFind} />
             ) : id === 'fixes' ? (
               <Fixes {...pageProps} />
             ) : id === 'services' ? (

@@ -631,7 +631,9 @@ export const generalTweaks: Tweak[] = [
       builds: { min: 22000 },
       // Newer Windows 11 builds protect this setting (User Choice Protection driver); IcyTweaker doesn't work around it.
       deniedHint:
-        'Windows protects this setting from other programs on your version, so IcyTweaker can\'t change it. Turn Widgets off yourself: Settings > Personalization > Taskbar > Widgets. To remove Widgets entirely, uninstall "Windows Web Experience Pack" on the Debloating page.',
+        'Windows protects this setting from other programs on your version, so IcyTweaker can\'t change it. Use "Remove in Debloater" on the Widgets Off card to uninstall Widgets (Windows Web Experience Pack).',
+      // The Store package behind Widgets (MicrosoftWindows.Client.WebExperience); the Debloater lists Store apps by package name.
+      findInDebloater: 'WebExperience',
     }),
     { hive: 'HKLM', key: 'SOFTWARE\\Policies\\Microsoft\\Dsh', name: 'AllowNewsAndInterests', enabled: 0, defaultValue: null },
   ),

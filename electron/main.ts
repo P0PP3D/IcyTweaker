@@ -30,7 +30,8 @@ import { createDriverJob, driverInfo } from './resources/driver';
 import { captureFrametimes, ensurePresentMon } from './resources/frametime';
 import { BIOS_GUIDES, GENERIC_GUIDE, auditBios, detectHardware } from './advanced/hardware';
 import { advancedTweaks, type MsiDevice } from './advanced/advanced';
-import { DEFAULT_BOOST, createBoost, parsePlans, validateBoost, type BoostSettings } from './games/boost';
+import { DEFAULT_BOOST, createBoost, optionsFor, parsePlans, validateBoost, type BoostSettings } from './games/boost';
+import { fanListScript, startFanControl, type FanControl } from './system/fans';
 import { createDebloater } from './system/debloat';
 import { fixes } from './tweaks/fixes';
 import { serviceTweaks } from './services/catalog';
@@ -376,8 +377,30 @@ app.whenReady().then(async () => {
     let benchRunning = false;
     let oldDriverIds = new Set<string>(); // published names (oemNN.inf) from the last listOldDrivers()
     const boostGames = gameProfiles.map((g) => ({ id: g.id, name: g.name, exe: [...g.exe] }));
-    const boost = createBoost(safety, boostGames, settings.boost, (e, game) => {
+    // Fan curve during a session (system/fans.ts). Live + administrator only: dry-run never touches the fans.
+    let fanCtl: FanControl | null = null;
+    const lhmDir = path.join(app.getPath('userData'), 'tools', 'lhm-0.9.6');
+    app.on('will-quit', () => fanCtl?.stop());
+    const boost = createBoost(safety, boostGames, settings.boost, (e, game, id) => {
       if (settings.app.overlayWithBoost) void (e === 'start' ? startOverlayFor(game) : stopOverlay());
+      const curve = optionsFor(boost.settings, id).fanCurve;
+      if (e === 'start' && curve) {
+        if (!live || !admin || !existsSync(path.join(lhmDir, 'LibreHardwareMonitorLib.dll')))
+          void safety.log('fan-curve', game, false, !live ? 'dry-run: fans not controlled' : !admin ? 'needs administrator' : 'temperature reader not set up');
+        else {
+          let told = false;
+          fanCtl = startFanControl(lhmDir, curve, (s) => {
+            if (s.error && !told) {
+              told = true;
+              notify('Fan curve', s.error);
+              void safety.log('fan-curve', game, false, s.error);
+            } else if (s.fans) void safety.log('fan-curve', game, true, `${s.fans} fan channel(s) following the curve`);
+          });
+        }
+      } else if (e === 'end' && fanCtl) {
+        fanCtl.stop(); // fans back to the BIOS
+        fanCtl = null;
+      }
       // Focus Mode with Game Boost: on when a game starts (if it isn't already on), off when that game ends, but only
       // if Game Boost was the one that turned it on.
       if (e === 'start' && settings.focus.withBoost && !focus.state() && (admin || !live)) {
@@ -822,6 +845,13 @@ app.whenReady().then(async () => {
         } finally {
           progress({ task: 'runtimes', done: 1, total: 1, current: '' });
         }
+      },
+
+      /** Read-only: the fan channels a curve can control (needs the temperature reader and administrator). */
+      async fanChannels() {
+        if (!existsSync(path.join(lhmDir, 'LibreHardwareMonitorLib.dll')) || !(await pawnioInstalled(adapter))) return { ready: false, admin, channels: [] as string[] };
+        const out = admin ? await adapter.query(POWERSHELL_EXE, ['-NoProfile', '-NonInteractive', '-Command', fanListScript(lhmDir)], 60_000).catch(() => '') : '';
+        return { ready: true, admin, channels: out.split(/\r?\n/).map((l) => l.trim()).filter(Boolean) };
       },
 
       async setupCpuTemp() {

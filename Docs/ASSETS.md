@@ -10,9 +10,8 @@ endorsed by them. Check each publisher's brand rules before a commercial release
 | `valorant.png` | VALORANT | Wikimedia Commons, `File:Valorant logo - pink color version.svg` (rendered to PNG) |
 | `roblox.png` | Roblox | Wikimedia Commons, `File:Roblox Logo Black.svg` (rendered to PNG) |
 | `deadlock.jpg` | Deadlock | Steam header art for app 1422450, supplied by the owner (2026-11-12) |
-
-| `dead-by-daylight.jpg` | Dead by Daylight | Steam library header for app 381210, copied from the local Steam `appcache\librarycache` |
-| `outlast-trials.jpg` | The Outlast Trials | Steam library header for app 1304930, copied from the local Steam `appcache\librarycache` |
+| `dead-by-daylight.jpg` | Dead by Daylight | Key art banner (1920×620, the Trapper), supplied by the owner (2026-11-14) |
+| `outlast-trials.jpg` | The Outlast Trials | Steam header art (460×215) for app 1304930, supplied by the owner (2026-11-14) |
 
 Downloaded 2026-11-11. Game icons in the list next to installed games are read at runtime from each game's own
 installed executable and are not bundled.

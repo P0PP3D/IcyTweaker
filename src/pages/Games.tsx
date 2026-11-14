@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import clsx from 'clsx';
-import type { BoostOptions, BoostState, DisplayMode, FroststrapInfo, FrametimeResult, ToolStatus, GameFlag, GameStatus, GameValues, GameView, GameWinSettings, LibraryGame, SessionReport } from '../../shared/types';
+import type { BoostOptions, BoostState, DisplayMode, FanPoint, FroststrapInfo, FrametimeResult, ToolStatus, GameFlag, GameStatus, GameValues, GameView, GameWinSettings, LibraryGame, SessionReport } from '../../shared/types';
 import { Badge, Button, MUTED_BADGE, Tabs, Toggle, type Ask } from '../ui';
 import type { Act } from './General';
 import deadlockArt from '../assets/games/deadlock.jpg';
@@ -184,7 +184,7 @@ function GameBoost({ busy, act }: { busy: boolean; act: Act }) {
     scope === 'all' ? saveAll({ ...s, ...patch }) : saveAll({ ...s, perGame: { ...s.perGame, [scope]: { ...o, ...patch } } });
   const setCustom = (on: boolean) => {
     const perGame = { ...s.perGame };
-    if (on) perGame[scope] = { plan: s.plan, planGuid: s.planGuid, lowerApps: [...s.lowerApps], pauseUpdates: s.pauseUpdates, pauseOneDrive: s.pauseOneDrive, purgeStandby: s.purgeStandby, display: s.display ?? null, quietNotifications: !!s.quietNotifications };
+    if (on) perGame[scope] = { plan: s.plan, planGuid: s.planGuid, lowerApps: [...s.lowerApps], pauseUpdates: s.pauseUpdates, pauseOneDrive: s.pauseOneDrive, purgeStandby: s.purgeStandby, display: s.display ?? null, quietNotifications: !!s.quietNotifications, fanCurve: s.fanCurve ?? null };
     else delete perGame[scope];
     return saveAll({ ...s, perGame });
   };
@@ -302,6 +302,7 @@ function GameBoost({ busy, act }: { busy: boolean; act: Act }) {
             </label>
           ))}
         </div>
+        <FanCurveEditor key={scope} curve={o.fanCurve ?? null} disabled={busy || !editable} act={act} onChange={(fanCurve) => edit({ fanCurve })} />
         {!editable && <p className="text-xs text-slate-500">This game uses the defaults. Tick "Use its own settings" to change them for it only.</p>}
       </div>
 
@@ -333,6 +334,201 @@ function CpuTempSetup({ busy, act }: { busy: boolean; act: Act }) {
     <Button disabled={busy} onClick={() => act(() => window.api.setupCpuTemp()).then(() => window.api.toolStatus().then(setTools))}>
       Set up CPU temperature
     </Button>
+  );
+}
+
+/** Same limits as electron/system/fans.ts (the main process checks them again). */
+const FAN = { min: 30, panic: 85, tMin: 30, tMax: 95 };
+const DEFAULT_CURVE: FanPoint[] = [
+  { t: 40, pct: 35 },
+  { t: 60, pct: 50 },
+  { t: 75, pct: 75 },
+  { t: 85, pct: 100 },
+];
+
+/**
+ * Game Boost fan curve: CPU temperature -> fan speed for the motherboard's fans while the game runs. Drag the points
+ * on the chart or type exact values. Saved when a drag ends (not on every move).
+ */
+function FanCurveEditor({ curve, disabled, act, onChange }: { curve: FanPoint[] | null; disabled: boolean; act: Act; onChange: (c: FanPoint[] | null) => void }) {
+  const [pts, setPts] = useState<FanPoint[]>(curve ?? DEFAULT_CURVE);
+  const [drag, setDrag] = useState<number | null>(null);
+  const [fans, setFans] = useState<{ ready: boolean; admin: boolean; channels: string[] } | null>(null);
+  // The panel reloads settings every 3 s (new objects): follow only real changes, and never mid-drag.
+  const saved = JSON.stringify(curve);
+  useEffect(() => {
+    if (drag === null) setPts(curve ?? DEFAULT_CURVE);
+  }, [saved]); // keyed on the saved value, not the object
+  const on = !!curve;
+  const W = 320;
+  const H = 150;
+  const P = 28; // room for the axis labels
+  const x = (t: number) => P + ((t - FAN.tMin) / (FAN.tMax - FAN.tMin)) * (W - P - 8);
+  const y = (pct: number) => 8 + ((100 - pct) / (100 - FAN.min)) * (H - P - 8);
+  const sorted = [...pts].sort((a, b) => a.t - b.t);
+  // Same rules as validateCurve: rising temperatures, speeds within limits.
+  const clean = (list: FanPoint[]) =>
+    [...list]
+      .map((p) => ({ t: Math.round(Math.min(FAN.tMax, Math.max(FAN.tMin, p.t))), pct: Math.round(Math.min(100, Math.max(FAN.min, p.pct))) }))
+      .sort((a, b) => a.t - b.t)
+      .filter((p, i, a) => i === 0 || p.t > a[i - 1].t);
+  const save = (list: FanPoint[]) => {
+    const c = clean(list);
+    setPts(c);
+    if (on && c.length >= 2) onChange(c);
+  };
+  const move = (e: React.PointerEvent<SVGSVGElement>) => {
+    if (drag === null) return;
+    const r = e.currentTarget.getBoundingClientRect();
+    const sx = ((e.clientX - r.left) / r.width) * W;
+    const sy = ((e.clientY - r.top) / r.height) * H;
+    const t = FAN.tMin + ((sx - P) / (W - P - 8)) * (FAN.tMax - FAN.tMin);
+    const pct = 100 - ((sy - 8) / (H - P - 8)) * (100 - FAN.min);
+    setPts((list) => list.map((p, i) => (i === drag ? { t: Math.round(Math.min(FAN.tMax, Math.max(FAN.tMin, t))), pct: Math.round(Math.min(100, Math.max(FAN.min, pct))) } : p)));
+  };
+  const addPoint = () => {
+    // In the middle of the widest gap between two points.
+    let best = 1;
+    for (let i = 1; i < sorted.length; i++) if (sorted[i].t - sorted[i - 1].t > sorted[best].t - sorted[best - 1].t) best = i;
+    const [a, b] = [sorted[best - 1], sorted[best]];
+    if (b.t - a.t >= 2) save([...sorted, { t: Math.round((a.t + b.t) / 2), pct: Math.round((a.pct + b.pct) / 2) }]);
+  };
+
+  return (
+    <div className="space-y-2 rounded-lg bg-white/[0.03] p-3 ring-1 ring-[var(--line)]">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <label className="flex items-center gap-2">
+          <input type="checkbox" checked={on} disabled={disabled} onChange={(e) => onChange(e.target.checked ? clean(pts) : null)} />
+          Fan curve during play
+        </label>
+        <Button
+          disabled={disabled}
+          onClick={() =>
+            void window.api.fanChannels().then(setFans, () => setFans({ ready: false, admin: false, channels: [] }))
+          }
+        >
+          Check fans
+        </Button>
+      </div>
+      <p className="text-xs text-slate-500">
+        The motherboard's fans follow your CPU temperature while this game runs, and go back to the BIOS settings when it closes. They never drop below {FAN.min} % and run at 100 % from {FAN.panic} °C.
+        Works on most desktop motherboards; most laptops don't allow it.
+      </p>
+      {fans &&
+        (!fans.ready ? (
+          <div className="flex flex-wrap items-center gap-2 text-xs text-amber-300">
+            Needs the CPU temperature reader first. <CpuTempSetup busy={disabled} act={act} />
+          </div>
+        ) : !fans.admin ? (
+          <p className="text-xs text-amber-300">Checking fans needs IcyTweaker to run as administrator.</p>
+        ) : fans.channels.length ? (
+          <p className="text-xs text-emerald-300">
+            {fans.channels.length} fan(s) can be controlled: {fans.channels.join(', ')}.
+          </p>
+        ) : (
+          <p className="text-xs text-amber-300">No fans on this PC can be controlled by IcyTweaker, so a curve would change nothing.</p>
+        ))}
+      <div className={clsx('flex flex-wrap items-start gap-4', !on && 'opacity-50')}>
+        <svg
+          viewBox={`0 0 ${W} ${H}`}
+          className="w-full max-w-[320px] touch-none select-none"
+          role="img"
+          aria-label={`Fan curve: ${sorted.map((p) => `${p.t} °C ${p.pct} %`).join(', ')}`}
+          onPointerMove={move}
+          onPointerUp={() => {
+            if (drag !== null) save(pts);
+            setDrag(null);
+          }}
+          onPointerLeave={() => {
+            if (drag !== null) save(pts);
+            setDrag(null);
+          }}
+        >
+          {[40, 60, 80, 95].map((t) => (
+            <g key={t}>
+              <line x1={x(t)} x2={x(t)} y1={8} y2={H - P} className="stroke-white/10" />
+              <text x={x(t)} y={H - P + 14} textAnchor="middle" className="fill-slate-500 text-[10px]">
+                {t}°
+              </text>
+            </g>
+          ))}
+          {[30, 50, 75, 100].map((pct) => (
+            <g key={pct}>
+              <line x1={P} x2={W - 8} y1={y(pct)} y2={y(pct)} className="stroke-white/10" />
+              <text x={P - 4} y={y(pct) + 3} textAnchor="end" className="fill-slate-500 text-[10px]">
+                {pct}%
+              </text>
+            </g>
+          ))}
+          <rect x={x(FAN.panic)} y={8} width={x(FAN.tMax) - x(FAN.panic)} height={H - P - 8} className="fill-rose-500/10" />
+          <polyline
+            points={[`${x(FAN.tMin)},${y(sorted[0].pct)}`, ...sorted.map((p) => `${x(p.t)},${y(p.pct)}`), `${x(FAN.panic)},${y(sorted[sorted.length - 1].pct)}`].join(' ')}
+            className="fill-none stroke-sky-400"
+            strokeWidth={2}
+          />
+          {pts.map((p, i) => (
+            <circle
+              key={i}
+              cx={x(p.t)}
+              cy={y(p.pct)}
+              r={drag === i ? 7 : 5.5}
+              className={clsx('fill-sky-300 stroke-[var(--card)]', !disabled && on && 'cursor-grab')}
+              strokeWidth={2}
+              onPointerDown={(e) => {
+                if (disabled || !on) return;
+                e.currentTarget.ownerSVGElement?.setPointerCapture(e.pointerId);
+                setDrag(i);
+              }}
+            />
+          ))}
+        </svg>
+        <div className="space-y-1 text-xs">
+          {sorted.map((p, i) => (
+            <div key={`${p.t}-${i}`} className="flex items-center gap-1.5">
+              {/* Saved when you leave the box (or press Enter): half-typed values would be clamped. */}
+              <input
+                key={`t${p.t}`}
+                type="number"
+                min={FAN.tMin}
+                max={FAN.tMax}
+                defaultValue={p.t}
+                disabled={disabled || !on}
+                aria-label={`Point ${i + 1} temperature`}
+                onKeyDown={(e) => e.key === 'Enter' && e.currentTarget.blur()}
+                onBlur={(e) => Number(e.target.value) !== p.t && save(sorted.map((q, j) => (j === i ? { ...q, t: Number(e.target.value) } : q)))}
+                className="w-14 rounded bg-white/5 px-1.5 py-0.5 text-slate-100 ring-1 ring-white/10"
+              />
+              °C →
+              <input
+                key={`p${p.pct}`}
+                type="number"
+                min={FAN.min}
+                max={100}
+                defaultValue={p.pct}
+                disabled={disabled || !on}
+                aria-label={`Point ${i + 1} fan speed`}
+                onKeyDown={(e) => e.key === 'Enter' && e.currentTarget.blur()}
+                onBlur={(e) => Number(e.target.value) !== p.pct && save(sorted.map((q, j) => (j === i ? { ...q, pct: Number(e.target.value) } : q)))}
+                className="w-14 rounded bg-white/5 px-1.5 py-0.5 text-slate-100 ring-1 ring-white/10"
+              />
+              %
+              <button
+                type="button"
+                disabled={disabled || !on || sorted.length <= 2}
+                onClick={() => save(sorted.filter((_, j) => j !== i))}
+                aria-label={`Remove point ${i + 1}`}
+                className="px-1 text-slate-500 hover:text-rose-300 disabled:opacity-30"
+              >
+                ×
+              </button>
+            </div>
+          ))}
+          <button type="button" disabled={disabled || !on || sorted.length >= 8} onClick={addPoint} className="text-sky-300 hover:underline disabled:opacity-40">
+            + Add point
+          </button>
+        </div>
+      </div>
+    </div>
   );
 }
 
