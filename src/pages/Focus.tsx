@@ -2,20 +2,22 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import clsx from 'clsx';
 import type { FocusInfo, FocusSettings } from '../../shared/types';
 import { Icon } from '../icons';
-import { Button, Loading, Toggle, ago } from '../ui';
+import { Button, Loading, Toggle, ago, type Ask } from '../ui';
 import type { Act } from './General';
 
 type Choice = { exe: string; name: string };
 
 /** Focus Mode: stop non-essential services and close background apps while you play, all back with one click. */
-export function Focus({ busy, act }: { busy: boolean; act: Act }) {
+export function Focus({ busy, act, ask }: { busy: boolean; act: Act; ask: Ask }) {
   const [info, setInfo] = useState<FocusInfo | null>(null);
   const [apps, setApps] = useState<{ choices: Choice[]; installed: string[] } | null>(null);
+  const [icons, setIcons] = useState<Record<string, string | null>>({});
   const [switching, setSwitching] = useState(false);
   const load = useCallback(async () => setInfo(await window.api.focusInfo()), []);
   useEffect(() => {
     void load();
     void window.api.focusApps().then(setApps, () => setApps({ choices: [], installed: [] }));
+    void window.api.focusIcons().then(setIcons, () => {});
     const t = setInterval(() => void load(), 5000); // the tray can switch it too
     return () => clearInterval(t);
   }, [load]);
@@ -28,6 +30,20 @@ export function Focus({ busy, act }: { busy: boolean; act: Act }) {
   const builtIn = apps ? info.apps.filter((a) => apps.installed.includes(a.exe)) : [];
   const nameOf = (exe: string) => apps?.choices.find((c) => c.exe === exe)?.name ?? info.apps.find((a) => a.exe === exe)?.label;
   const willClose = s.apps.filter((x) => !apps || apps.installed.includes(x)).length + s.custom.length;
+  // One list: the built-in apps this PC has, then the user's own (ticked = custom, unticked = customOff).
+  const off = (s.customOff ?? []).filter((x) => !s.custom.includes(x));
+  const rows = [
+    ...builtIn.map((a) => ({ exe: a.exe, name: a.label, on: s.apps.includes(a.exe), mine: false })),
+    ...[...s.custom, ...off].filter((x) => !builtIn.some((a) => a.exe === x)).map((x) => ({ exe: x, name: nameOf(x) ?? x, on: s.custom.includes(x), mine: true })),
+  ];
+  const tick = (exe: string, mine: boolean, on: boolean) =>
+    mine
+      ? save({ custom: on ? [...s.custom, exe] : s.custom.filter((x) => x !== exe), customOff: on ? off.filter((x) => x !== exe) : [...off, exe] })
+      : save({ apps: toggleIn(s.apps, exe, on) });
+  const remove = async (exe: string, name: string) => {
+    if (await ask(`Remove ${name}?`, "It leaves the Focus Mode list and won't be closed any more. You can add it again with the search box.", 'Remove'))
+      await save({ custom: s.custom.filter((x) => x !== exe), customOff: off.filter((x) => x !== exe) });
+  };
   const flip = async () => {
     setSwitching(true);
     try {
@@ -92,15 +108,27 @@ export function Focus({ busy, act }: { busy: boolean; act: Act }) {
         <div className="space-y-4">
           <div className="rounded-xl bg-[var(--card)] p-4 ring-1 ring-[var(--line)]">
             <div className="font-medium text-slate-100">Apps to close</div>
-            <p className="mb-2 text-xs text-slate-500">Each is asked to close first (like clicking X), and ended only if it's still open after 3 seconds.</p>
+            <p className="mb-2 text-xs text-slate-500">
+              Each is asked to close first (like clicking X), and ended only if it's still open after 3 seconds. Right-click an app you added to remove it.
+            </p>
             {!apps ? (
               <Loading text="Finding your apps…" />
-            ) : builtIn.length ? (
+            ) : rows.length ? (
               <div className="grid gap-1.5 sm:grid-cols-2">
-                {builtIn.map((a) => (
-                  <label key={a.exe} className="flex items-center gap-2 text-sm text-slate-300">
-                    <input type="checkbox" checked={s.apps.includes(a.exe)} disabled={busy || active} onChange={(e) => void save({ apps: toggleIn(s.apps, a.exe, e.target.checked) })} />
-                    {a.label}
+                {rows.map((r) => (
+                  <label
+                    key={r.exe}
+                    title={r.mine ? `${r.exe} (right-click to remove)` : r.exe}
+                    onContextMenu={(e) => {
+                      if (!r.mine || busy || active) return;
+                      e.preventDefault();
+                      void remove(r.exe, r.name);
+                    }}
+                    className="flex min-w-0 items-center gap-2 text-sm text-slate-300"
+                  >
+                    <input type="checkbox" checked={r.on} disabled={busy || active} onChange={(e) => void tick(r.exe, r.mine, e.target.checked)} />
+                    <AppIcon src={icons[r.exe]} name={r.name} />
+                    <span className="truncate">{r.name}</span>
                   </label>
                 ))}
               </div>
@@ -108,13 +136,15 @@ export function Focus({ busy, act }: { busy: boolean; act: Act }) {
               <p className="text-xs text-slate-500">None of the usual background apps are on this PC. Add your own below.</p>
             )}
             <AppList
-              title="Your own apps"
-              list={s.custom}
+              title="Add an app"
+              list={rows.map((r) => r.exe)}
+              chips={false}
               choices={apps?.choices}
+              icons={icons}
               nameOf={nameOf}
               disabled={busy || active}
-              onAdd={(exe) => void save({ custom: [...s.custom, exe] })}
-              onRemove={(x) => void save({ custom: s.custom.filter((y) => y !== x) })}
+              onAdd={(exe) => void (builtIn.some((a) => a.exe === exe) ? save({ apps: [...s.apps, exe] }) : save({ custom: [...s.custom, exe], customOff: off.filter((y) => y !== exe) }))}
+              onRemove={() => {}}
             />
           </div>
           <div className="rounded-xl bg-[var(--card)] p-4 ring-1 ring-[var(--line)]">
@@ -124,6 +154,7 @@ export function Focus({ busy, act }: { busy: boolean; act: Act }) {
               title=""
               list={s.exceptions}
               choices={apps?.choices}
+              icons={icons}
               nameOf={nameOf}
               disabled={busy || active}
               onAdd={(exe) => void save({ exceptions: [...s.exceptions, exe] })}
@@ -144,6 +175,15 @@ export function Focus({ busy, act }: { busy: boolean; act: Act }) {
             </span>
             <Toggle on={s.reopen} label="Reopen closed apps" disabled={busy} onChange={(v) => void save({ reopen: v })} />
           </label>
+          <label className="flex items-center justify-between gap-3 rounded-xl bg-[var(--card)] px-4 py-3 text-sm text-slate-200 ring-1 ring-[var(--line)]">
+            <span>
+              Shut down WSL
+              <span className="block text-xs text-slate-500">
+                Frees the memory Linux on Windows (vmmemWSL) holds, if it's running. Linux programs in it stop; it starts again the next time you use it.
+              </span>
+            </span>
+            <Toggle on={!!s.wsl} label="Shut down WSL" disabled={busy || active} onChange={(v) => void save({ wsl: v })} />
+          </label>
         </div>
       </div>
       {active && <p className="text-xs text-slate-500">Turn Focus Mode off to change the lists.</p>}
@@ -151,8 +191,29 @@ export function Focus({ busy, act }: { busy: boolean; act: Act }) {
   );
 }
 
-/** Chosen apps as chips, plus a searchable drop-down of the user's apps (by name or exe). */
-function AppList(p: { title: string; list: string[]; choices?: Choice[]; nameOf: (exe: string) => string | undefined; disabled: boolean; onAdd: (exe: string) => void; onRemove: (x: string) => void }) {
+/** An app's own icon, or its first letter when Windows has none for it. */
+function AppIcon({ src, name }: { src?: string | null; name: string }) {
+  return src ? (
+    <img src={src} alt="" className="h-5 w-5 shrink-0" />
+  ) : (
+    <span className="grid h-5 w-5 shrink-0 place-items-center rounded bg-white/10 text-[10px] font-semibold text-slate-300" aria-hidden>
+      {name.slice(0, 1).toUpperCase()}
+    </span>
+  );
+}
+
+/** Chosen apps as chips (unless chips is false: the list shows them), plus a searchable drop-down of the user's apps (by name or exe). */
+function AppList(p: {
+  title: string;
+  list: string[];
+  chips?: boolean;
+  choices?: Choice[];
+  icons: Record<string, string | null>;
+  nameOf: (exe: string) => string | undefined;
+  disabled: boolean;
+  onAdd: (exe: string) => void;
+  onRemove: (x: string) => void;
+}) {
   const [q, setQ] = useState('');
   const [open, setOpen] = useState(false);
   const box = useRef<HTMLDivElement>(null);
@@ -174,10 +235,11 @@ function AppList(p: { title: string; list: string[]; choices?: Choice[]; nameOf:
   return (
     <div className="mt-3 space-y-2">
       {p.title && <div className="text-sm text-slate-300">{p.title}</div>}
-      {p.list.length > 0 && (
+      {p.chips !== false && p.list.length > 0 && (
         <div className="flex flex-wrap gap-1.5">
           {p.list.map((x) => (
-            <span key={x} title={x} className="inline-flex items-center gap-1 rounded-md bg-white/5 px-2 py-0.5 text-xs text-slate-200 ring-1 ring-white/10">
+            <span key={x} title={x} className="inline-flex items-center gap-1.5 rounded-md bg-white/5 px-2 py-0.5 text-xs text-slate-200 ring-1 ring-white/10">
+              <AppIcon src={p.icons[x]} name={p.nameOf(x) ?? x} />
               {p.nameOf(x) ?? x}
               <button type="button" aria-label={`Remove ${x}`} disabled={p.disabled} onClick={() => p.onRemove(x)} className="text-slate-500 hover:text-rose-300 disabled:opacity-40">
                 ×
@@ -214,8 +276,9 @@ function AppList(p: { title: string; list: string[]; choices?: Choice[]; nameOf:
             ) : (
               shown.slice(0, 100).map((c) => (
                 <li key={c.exe} role="option" aria-selected={false}>
-                  <button type="button" onClick={() => add(c.exe)} className="flex w-full items-baseline justify-between gap-3 px-3 py-1.5 text-left text-sm hover:bg-white/5">
-                    <span className="truncate text-slate-100">{c.name}</span>
+                  <button type="button" onClick={() => add(c.exe)} className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-sm hover:bg-white/5">
+                    <AppIcon src={p.icons[c.exe]} name={c.name} />
+                    <span className="min-w-0 flex-1 truncate text-slate-100">{c.name}</span>
                     <span className="shrink-0 text-xs text-slate-500">{c.exe}</span>
                   </button>
                 </li>

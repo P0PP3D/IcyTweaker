@@ -5,5 +5,8 @@
 !macro customUnInstall
   ${ifNot} ${isUpdated}
     ExecWait '"$INSTDIR\${APP_EXECUTABLE_FILENAME}" --restore-defender'
+    ; The app's scheduled tasks (no-prompt Open from the shortcuts, Start with Windows). Missing ones are fine.
+    nsExec::Exec '"$SYSDIR\schtasks.exe" /Delete /TN "\IcyCleaner\Open" /F'
+    nsExec::Exec '"$SYSDIR\schtasks.exe" /Delete /TN "\IcyCleaner\Start" /F'
   ${endIf}
 !macroend

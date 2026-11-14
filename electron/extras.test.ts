@@ -227,6 +227,9 @@ describe('Focus Mode', () => {
     expect(v.services).toEqual(['SysMain']);
     expect(v.apps).toEqual(['onedrive.exe']);
     expect(v.custom).toEqual(['obs64.exe']);
+    expect(v.customOff).toEqual([]); // settings from before the added-but-unticked list
+    const w = validateFocus({ ...DEFAULT_FOCUS, custom: ['obs64.exe'], customOff: ['OBS64.exe', 'spotify.exe', 'explorer.exe'] })!;
+    expect(w.customOff).toEqual(['spotify.exe']); // ticked wins; core processes never listed
     expect(validateFocus({ services: [] })).toBeNull();
   });
   it('stops only running services, starts exactly those again, and a leftover session is put back on resume', async () => {
@@ -246,6 +249,22 @@ describe('Focus Mode', () => {
     expect(fake.commands.filter((c) => c[1] === 'start').map((c) => c[2])).toEqual(['WSearch', 'SysMain']);
     expect(again.state()).toBeNull();
     expect(await createFocus(fake, d, log).resume()).toBeNull();
+  });
+  it('shuts WSL down only when asked and a distro is running', async () => {
+    let distros = '';
+    const fake = memoryAdapter(undefined, async (f) => (f.endsWith('wsl.exe') ? distros : ''));
+    const d = dir();
+    await mkdir(d, { recursive: true });
+    const shutdowns = () => fake.commands.filter((c) => c[0].endsWith('wsl.exe') && c[1] === '--shutdown').length;
+    const f = createFocus(fake, d, async () => {});
+    await f.on({ ...DEFAULT_FOCUS, wsl: true, apps: [] }); // nothing running
+    await f.off(false);
+    distros = 'U\0b\0u\0n\0t\0u\0\r\0\n\0'; // wsl.exe prints UTF-16
+    await f.on({ ...DEFAULT_FOCUS, wsl: false, apps: [] }); // not asked
+    await f.off(false);
+    expect(shutdowns()).toBe(0);
+    expect(await f.on({ ...DEFAULT_FOCUS, wsl: true, apps: [] })).toMatch(/WSL shut down/);
+    expect(shutdowns()).toBe(1);
   });
 });
 
@@ -424,12 +443,14 @@ describe('Focus Mode app pickers', () => {
     });
     const r = parseAppChoices(out, () => false, { SystemRoot: 'C:\\Windows' });
     expect(r.choices).toEqual([{ exe: 'obs64.exe', name: 'OBS Studio' }]);
+    expect(r.paths['obs64.exe']).toBe('C:\\Program Files\\obs-studio\\bin\\64bit\\obs64.exe');
     expect(r.installed.sort()).toEqual(['discord.exe', 'ms-teams.exe']);
   });
   it('a built-in app counts as installed when its file exists', () => {
     const r = parseAppChoices(b64({}), (p) => p === 'C:\\Users\\me\\AppData\\Roaming\\Spotify\\Spotify.exe', { APPDATA: 'C:\\Users\\me\\AppData\\Roaming' });
     expect(r.installed).toEqual(['spotify.exe']);
-    expect(parseAppChoices('garbage', () => false, {})).toEqual({ choices: [], installed: [] });
+    expect(r.paths['spotify.exe']).toBe('C:\\Users\\me\\AppData\\Roaming\\Spotify\\Spotify.exe'); // its icon comes from there
+    expect(parseAppChoices('garbage', () => false, {})).toEqual({ choices: [], installed: [], paths: {} });
   });
 });
 

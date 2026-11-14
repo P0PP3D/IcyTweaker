@@ -208,11 +208,13 @@ describe('driver reinstall', () => {
     // Task first (so the app comes back after DDU's restart, elevated), then DDU.
     expect(fake.commands[0].slice(0, 6)).toEqual([SCHTASKS, '/Create', '/TN', DRIVER_TASK, '/TR', '"app.exe" --resume-driver-job']);
     expect(fake.commands[0]).toEqual(expect.arrayContaining(['ONLOGON', 'HIGHEST', '/IT']));
-    expect(fake.commands[1]).toEqual([ddu, ...DDU_ARGS]);
+    // Then normal priority (a task's default runs the resumed app below normal).
+    expect(fake.commands[1].at(-1)).toBe("$t = Get-ScheduledTask -TaskPath '\\IcyCleaner\\' -TaskName 'DriverJob' -ErrorAction Stop; $t.Settings.Priority = 4; Set-ScheduledTask -InputObject $t -ErrorAction Stop | Out-Null");
+    expect(fake.commands[2]).toEqual([ddu, ...DDU_ARGS]);
     const done = await job.resume();
     expect(done?.step).toBe('done');
-    expect(fake.commands[2]).toEqual([started.installer, ...NVIDIA_INSTALL_ARGS]);
-    expect(fake.commands[3]).toEqual([SCHTASKS, '/Delete', '/TN', DRIVER_TASK, '/F']);
+    expect(fake.commands[3]).toEqual([started.installer, ...NVIDIA_INSTALL_ARGS]);
+    expect(fake.commands[4]).toEqual([SCHTASKS, '/Delete', '/TN', DRIVER_TASK, '/F']);
     await job.clear();
     expect(await job.status()).toBeNull();
   });
@@ -255,5 +257,17 @@ describe('frametime capture', () => {
     expect(r.avgFps).toBe(240.4); // 1000 / 4.16 ms (the exact mean, not the rounded 4.2)
     expect(() => parseFrametimes('a,b\n1,2')).toThrow(/column/);
     expect(() => frametimeStats('game.exe', 10, [])).toThrow(/No frames/);
+  });
+});
+
+describe('Open task (no-prompt shortcuts)', () => {
+  it('runs on demand, elevated, in parallel, at normal priority, with the path escaped', async () => {
+    const { openTaskXml } = await import('./system/tasks');
+    const xml = openTaskXml('C:\\Games & Tools\\IcyTweaker.exe', 'PC\\me');
+    expect(xml).toContain('<Command>C:\\Games &amp; Tools\\IcyTweaker.exe</Command>');
+    expect(xml).toContain('<MultipleInstancesPolicy>Parallel</MultipleInstancesPolicy>'); // works while a copy runs in the tray
+    expect(xml).toContain('<RunLevel>HighestAvailable</RunLevel>');
+    expect(xml).toContain('<Priority>4</Priority>');
+    expect(xml).not.toContain('<Triggers>');
   });
 });

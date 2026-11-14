@@ -613,6 +613,12 @@ function Editor({ g, icon, busy, act, ask, reload, onPlay }: { g: GameView; icon
         )}
       </div>
       {g.note && <p className="text-xs text-amber-300">{g.note}</p>}
+      {!!g.reverted?.length && (
+        <p className="rounded-lg bg-amber-500/10 px-3 py-2 text-xs text-amber-300 ring-1 ring-amber-500/30">
+          {g.name} put back {g.reverted.length} of the settings IcyTweaker applied ({g.reverted.join(', ')}). Games often do this on launch or when a setting is changed
+          in-game. Apply again to set them, or change them in the game.
+        </p>
+      )}
       {g.id === 'roblox' && <Froststrap busy={busy} act={act} />}
       {!editable ? (
         <p className="text-sm text-slate-400">

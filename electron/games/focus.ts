@@ -63,8 +63,15 @@ export const APPS_SCRIPT = [
 
 const JUNK = /uninstall|readme|read me|help|manual|website|setup|install|update|license|release notes|documentation|support/i;
 
-/** APPS_SCRIPT output -> picker choices (one per exe, Start-menu name first) and which FOCUS_APPS this PC has. */
-export function parseAppChoices(b64: string, exists: (p: string) => boolean, env: Record<string, string | undefined>): { choices: Array<{ exe: string; name: string }>; installed: string[] } {
+/**
+ * APPS_SCRIPT output -> picker choices (one per exe, Start-menu name first), which FOCUS_APPS this PC has, and a
+ * program file per exe for its icon (main only: the renderer never sends paths).
+ */
+export function parseAppChoices(
+  b64: string,
+  exists: (p: string) => boolean,
+  env: Record<string, string | undefined>,
+): { choices: Array<{ exe: string; name: string }>; installed: string[]; paths: Record<string, string> } {
   let raw: { apps?: unknown; appx?: unknown; running?: unknown } = {};
   try {
     raw = JSON.parse(Buffer.from(b64.trim(), 'base64').toString('utf8')) ?? {};
@@ -74,11 +81,13 @@ export function parseAppChoices(b64: string, exists: (p: string) => boolean, env
   const arr = (v: unknown) => (Array.isArray(v) ? v : v ? [v] : []); // ConvertTo-Json unwraps 1-item arrays
   const winDir = (env.SystemRoot ?? 'C:\\Windows').toLowerCase();
   const byExe = new Map<string, string>();
+  const paths: Record<string, string> = {};
   for (const a of arr(raw.apps) as Array<{ name?: unknown; path?: unknown }>) {
     if (typeof a?.name !== 'string' || typeof a.path !== 'string') continue;
     const file = a.path.split('\\').pop()!.toLowerCase();
     if (!EXE.test(file) || NEVER.has(file) || JUNK.test(a.name) || JUNK.test(file) || a.path.toLowerCase().startsWith(winDir)) continue;
     if (!byExe.has(file)) byExe.set(file, a.name.trim().slice(0, 80));
+    paths[file] ??= a.path;
   }
   const appx = new Set((arr(raw.appx) as unknown[]).filter((x): x is string => typeof x === 'string').map((x) => x.toLowerCase()));
   const running = new Set((arr(raw.running) as unknown[]).filter((x): x is string => typeof x === 'string').map((x) => `${x.toLowerCase()}.exe`));
@@ -86,17 +95,25 @@ export function parseAppChoices(b64: string, exists: (p: string) => boolean, env
   const installed = FOCUS_APPS.filter(
     (a) => running.has(a.exe) || byExe.has(a.exe) || (a.appx && appx.has(a.appx.toLowerCase())) || a.paths?.some((p) => !expand(p).includes('%') && exists(expand(p))),
   ).map((a) => a.exe);
+  // Built-in apps without a shortcut or open window: their known program file, if it exists (folders don't count).
+  for (const a of FOCUS_APPS)
+    if (!paths[a.exe]) {
+      const p = a.paths?.map(expand).find((x) => x.toLowerCase().endsWith('.exe') && !x.includes('%') && exists(x));
+      if (p) paths[a.exe] = p;
+    }
   const choices = [...byExe].map(([exe, name]) => ({ exe, name })).sort((a, b) => a.name.localeCompare(b.name));
-  return { choices, installed };
+  return { choices, installed, paths };
 }
 
 export const DEFAULT_FOCUS: FocusSettings = {
   services: FOCUS_SERVICES.filter((s) => s.default).map((s) => s.name),
   apps: FOCUS_APPS.filter((a) => a.default).map((a) => a.exe),
   custom: [],
+  customOff: [],
   exceptions: [],
   reopen: true,
   withBoost: false,
+  wsl: false,
 };
 
 const EXE = /^[\w .()&+-]{1,80}\.exe$/i;
@@ -109,17 +126,21 @@ export function validateFocus(raw: unknown): FocusSettings | null {
   if (!r || !Array.isArray(r.services) || !Array.isArray(r.apps) || !Array.isArray(r.custom) || !Array.isArray(r.exceptions) || typeof r.reopen !== 'boolean') return null;
   const known = new Set(FOCUS_SERVICES.map((s) => s.name));
   const list = (xs: unknown[]) => [...new Set(xs.map(exe).filter((x): x is string => !!x && !NEVER.has(x)))].slice(0, 100);
+  const custom = list(r.custom);
   return {
     services: [...new Set(r.services.filter((s): s is string => typeof s === 'string' && known.has(s) && !CRITICAL.has(s)))],
     apps: list(r.apps),
-    custom: list(r.custom),
+    custom,
+    customOff: list(Array.isArray(r.customOff) ? r.customOff : []).filter((x) => !custom.includes(x)), // missing before 0.1.13
     exceptions: [...new Set(r.exceptions.map(exe).filter((x): x is string => !!x))].slice(0, 100),
     reopen: r.reopen,
     withBoost: r.withBoost === true,
+    wsl: r.wsl === true,
   };
 }
 
 const ps = (script: string) => ['-NoProfile', '-NonInteractive', '-Command', script];
+const WSL_EXE = path.join(process.env.SystemRoot ?? 'C:\\Windows', 'System32', 'wsl.exe');
 const quote = (s: string) => `'${s.replace(/'/g, "''")}'`;
 
 export function createFocus(adapter: SystemAdapter, dataDir: string, log: (action: string, target: string, ok: boolean, detail?: string) => Promise<void>) {
@@ -161,9 +182,17 @@ export function createFocus(adapter: SystemAdapter, dataDir: string, log: (actio
         .filter((p) => p.length === 2 && p[1])
         .map(([name, p]) => ({ name: `${name}.exe`, path: p }));
     };
-    await Promise.all([services(), apps()]);
+    // WSL (opt-in): its virtual machine (vmmemWSL) holds memory until shut down. Only when a distro runs; Linux
+    // programs in it stop. Nothing to put back: WSL starts again by itself the next time it's used.
+    const wsl = async () => {
+      if (!s.wsl) return;
+      const running = await adapter.query(WSL_EXE, ['--list', '--running', '--quiet']).catch(() => ''); // UTF-16 names; exits non-zero when none
+      if (!running.replace(/\0/g, '').trim()) return;
+      st.wsl = await adapter.exec(WSL_EXE, ['--shutdown'], 60_000).then(() => true, () => false);
+    };
+    await Promise.all([services(), apps(), wsl()]);
     await save();
-    const msg = `${state.services.length} service(s) stopped, ${state.apps.length} app(s) closed`;
+    const msg = `${state.services.length} service(s) stopped, ${state.apps.length} app(s) closed${state.wsl ? ', WSL shut down' : ''}`;
     await log('focus-on', 'Focus Mode', true, `${msg}${adapter.live ? '' : ' (dry-run)'}`);
     return `Focus Mode on: ${msg}${adapter.live ? '' : ' (dry-run: nothing was stopped)'}.`;
   }

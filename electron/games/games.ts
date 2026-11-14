@@ -1,7 +1,7 @@
 // Game profiles: find installs and config files, read current values, apply a profile, reset it.
 // Writing is: back up each key (safety layer), patch only the keys the profile owns, read back to verify.
 import { existsSync } from 'node:fs';
-import { readFile, readdir, stat } from 'node:fs/promises';
+import { readFile, readdir, stat, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import type { ActionReport, GameFlag, GameValues, GameView } from '../../shared/types';
 import { refId, runningProcesses, type SettingRef, type Value } from '../system/adapter';
@@ -145,12 +145,33 @@ export function toWrites(p: GameProfile, v: GameValues): Write[] {
 
 const same = (a: Value | null, b: string) => a !== null && String(a).toLowerCase() === b.toLowerCase();
 
-export function createGames(profiles: GameProfile[], safety: Safety, env: GameEnv) {
+/** What the last apply wrote, per profile: the backup keeps only the originals, this keeps the values we set. */
+type Applied = Record<string, Array<{ name: string; ref: Ref; value: string }>>;
+
+/** appliedFile: where those values are kept (data dir; in memory without one). */
+export function createGames(profiles: GameProfile[], safety: Safety, env: GameEnv, appliedFile?: string) {
   const ref = (p: GameProfile, k: Key, files: Files): Ref | null => {
     const file = files[k.file];
     return file ? { kind: 'configKey', file, format: p.files[k.file].format, section: k.section, name: k.name, owner: p.id } : null;
   };
   const owned = (p: GameProfile) => safety.changedRefs().filter((r): r is Ref => r.kind === 'configKey' && r.owner === p.id);
+
+  let applied: Applied | null = null;
+  const loadApplied = async (): Promise<Applied> => (applied ??= appliedFile ? await readFile(appliedFile, 'utf8').then((t) => JSON.parse(t) as Applied, () => ({})) : {});
+  const setApplied = async (id: string, keys: Applied[string] | null) => {
+    const a = await loadApplied();
+    if (keys) a[id] = keys;
+    else delete a[id];
+    if (appliedFile) await writeFile(appliedFile, JSON.stringify(a)).catch(() => {});
+  };
+  /** Settings the game (or something else) changed back since IcyTweaker applied them: their key names. */
+  async function reverted(p: GameProfile): Promise<string[]> {
+    const keys = (await loadApplied())[p.id];
+    if (!keys?.length || !owned(p).length) return []; // reset, or another mode's backup
+    const out: string[] = [];
+    for (const k of keys) if (!same(await safety.read(k.ref).catch(() => null), k.value)) out.push(k.name);
+    return [...new Set(out)];
+  }
 
   async function filesOf(p: GameProfile): Promise<Files> {
     const out: Files = {};
@@ -230,6 +251,7 @@ export function createGames(profiles: GameProfile[], safety: Safety, env: GameEn
             recommended: { ...p.recommended },
             // When IcyTweaker first changed this game's settings (the backup's time): sessions before vs after it.
             optimizedAt: owned(p).map((r) => safety.savedAt(r)).filter((x): x is string => !!x).sort()[0] ?? null,
+            reverted: hasConfig ? await reverted(p) : [],
           };
         }),
       );
@@ -261,8 +283,11 @@ export function createGames(profiles: GameProfile[], safety: Safety, env: GameEn
       const wrong: string[] = [];
       for (const w of writes) if (!same(await safety.read(w.r!), w.v)) wrong.push(w.k.name);
       if (wrong.length) return { ok: false, message: `${p.name}: written, but these did not read back as set: ${wrong.join(', ')}. Reset puts the originals back.` };
+      await setApplied(p.id, writes.map((w) => ({ name: w.k.name, ref: w.r!, value: w.v })));
       return { ok: true, message: `${p.name} profile applied: ${writes.length} setting(s)${safety.adapter.live ? '' : ' (dry-run: nothing written)'}. Reset puts your originals back.` };
     },
+
+    reverted,
 
     async reset(p: GameProfile): Promise<ActionReport> {
       const refs = owned(p);
@@ -270,6 +295,7 @@ export function createGames(profiles: GameProfile[], safety: Safety, env: GameEn
       const procs = await runningProcesses(safety.adapter);
       if (p.exe.some((e) => procs.has(e))) return { ok: false, message: `Close ${p.name} first: it rewrites its settings when it exits.` };
       for (const r of refs) await safety.restore(r);
+      await setApplied(p.id, null);
       return { ok: true, message: `${p.name}: ${refs.length} setting(s) put back${safety.adapter.live ? '' : ' (dry-run)'}.` };
     },
   };

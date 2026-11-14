@@ -413,7 +413,7 @@ export function App() {
             ) : id === 'olddrivers' ? (
               <OldDrivers busy={busy} act={act} ask={ask} />
             ) : id === 'focus' ? (
-              <Focus busy={busy} act={act} />
+              <Focus busy={busy} act={act} ask={ask} />
             ) : id === 'startup' ? (
               <Startup busy={busy} act={act} ask={ask} />
             ) : id === 'settings' ? (

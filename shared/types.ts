@@ -647,6 +647,8 @@ export interface GameView {
   recommended: GameValues;
   /** When IcyTweaker first changed this game's settings; null = not optimized. */
   optimizedAt?: string | null;
+  /** Settings IcyTweaker applied that the game has since put back (key names, usually on launch or exit). */
+  reverted?: string[];
 }
 
 export interface AppState {
@@ -764,20 +766,26 @@ export interface BenchResult {
 export interface FocusSettings {
   services: string[];
   apps: string[];
-  /** The user's own programs to close (exe names). */
+  /** The user's own programs to close (exe names): added to the list and ticked. */
   custom: string[];
+  /** The user's own programs added to the list but unticked (kept so the row stays; never closed). */
+  customOff?: string[];
   /** Never closed, whatever the lists say. */
   exceptions: string[];
   /** Reopen the closed apps when Focus Mode turns off. */
   reopen: boolean;
   /** Turn on by itself when Game Boost starts a game, and off when it ends. */
   withBoost?: boolean;
+  /** Shut down WSL (its vmmemWSL virtual machine) when Focus Mode turns on, if a distro runs. */
+  wsl?: boolean;
 }
 /** While Focus Mode is on: what it actually stopped and closed. */
 export interface FocusState {
   since: string;
   services: string[];
   apps: Array<{ name: string; path: string }>;
+  /** WSL was shut down (nothing to restart: it starts when next used). */
+  wsl?: boolean;
 }
 export interface FocusInfo {
   settings: FocusSettings;
@@ -1005,6 +1013,8 @@ export interface OptimizerApi {
   setFocusSettings(s: FocusSettings): Promise<FocusInfo>;
   /** The user's apps for the Focus Mode pickers, and which built-in "apps to close" this PC has. */
   focusApps(): Promise<{ choices: Array<{ exe: string; name: string }>; installed: string[] }>;
+  /** Icons for the Focus Mode apps (exe -> data URL, null: none found). Read-only. */
+  focusIcons(): Promise<Record<string, string | null>>;
   /** Turn Focus Mode on or off. */
   setFocus(on: boolean): Promise<ActionReport>;
   /** Everything in the Recycle Bin, newest deleted first. */

@@ -98,6 +98,7 @@ const api: OptimizerApi = {
   benchmarks: call('benchmarks'),
   setFocusSettings: call('setFocusSettings'),
   focusApps: call('focusApps'),
+  focusIcons: call('focusIcons'),
   setFocus: call('setFocus'),
   getSettings: call('getSettings'),
   setMode: call('setMode'),

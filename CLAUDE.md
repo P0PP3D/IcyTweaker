@@ -248,3 +248,14 @@ Full spec: `docs/SPEC.md`. Work one phase of its "Build order" at a time.
   SimplePlay, SimpleUndo; no timers). App: SIMPLE_PAGES, simpleSections, `icy:mode` event (Settings ModeSwitch).
   Main `simpleOptimize` = applyPreset('safe-optimize') (makes its own restore point) + safeClean + weeklyClean on.
   Never wrap engine calls in the exported withRestorePoint/serial: they share the engine queue (deadlock).
+- No-prompt launch: main points the installer's Public Desktop + all-users Start menu `IcyTweaker.lnk` at
+  `schtasks /Run /TN \IcyCleaner\Open` (`tasks.ts` `openTaskXml`: no trigger, HighestAvailable, Parallel, priority 4),
+  re-checked every start (live + packaged + admin; `settings.openCmd` = user|exe). Uninstall deletes Open and Start tasks.
+- Focus apps: one list (built-in + added). `custom` = added and ticked, `customOff` = added, unticked; right-click an
+  added row removes it (confirm). Icons: main `focusIcons` from `parseAppChoices().paths` (never renderer paths), shared
+  `fileIcon` cache with Startup Apps. Focus `wsl` option: `wsl --shutdown` only if `wsl -l --running -q` lists a distro.
+- Sign-in tasks get priority 4 after /Create (`taskPriorityScript`; schtasks' default 7 = below normal). `startCmd` has a
+  ` #p4` marker so pre-0.1.13 Start tasks are re-made once.
+- Game settings check: `games.ts` keeps the values each apply wrote in `game-applied.json` (data dir, per mode);
+  `reverted(p)` = keys no longer matching -> `GameView.reverted` (card warning) and a notification when Game Boost
+  sees the game close. Reset clears the record.

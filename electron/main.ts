@@ -12,7 +12,7 @@ import { WPT_INSTALL_ARGS, XPERF, latencyCheck, traceDrivers } from './system/la
 import { PAWNIO_INSTALL_ARGS, ensureLhm, pawnioInstalled } from './system/sensors';
 import { backupDrivers, listDriverBackups, restoreDrivers } from './system/drivers';
 import { checkUpdates } from './system/updates';
-import { START_TASK, setLogonTask } from './system/tasks';
+import { OPEN_TASK, SCHTASKS, START_TASK, currentUser, openTaskXml, setLogonTask } from './system/tasks';
 import { autoUpdater } from 'electron-updater';
 import { createOverlayFeed } from './games/overlay';
 import { createFroststrap } from './apps/froststrap';
@@ -225,7 +225,7 @@ app.whenReady().then(async () => {
     };
     const cleaner = createCleaner(adapter, cleanerEnv);
     const gameEnv = { vars: env, steamPath: cleanerEnv.steamPath, programData: cleanerEnv.ProgramData };
-    const games = createGames(gameProfiles, safety, gameEnv);
+    const games = createGames(gameProfiles, safety, gameEnv, path.join(safety.dataDir, 'game-applied.json'));
     const iconCache = new Map<string, string | null>();
     const appIconCache = new Map<string, string | null>(); // icon file -> data URL (Debloater)
     const startup = createStartup(safety, startupSources({ APPDATA: env.APPDATA!, ProgramData: cleanerEnv.ProgramData }));
@@ -295,6 +295,8 @@ app.whenReady().then(async () => {
       focus: validateFocus(saved.focus) ?? DEFAULT_FOCUS,
       /** The command the Start with Windows task was last pointed at. */
       startCmd: (typeof saved.startCmd === 'string' ? saved.startCmd : null) as string | null,
+      /** user|exe the Open task was last made for (the shortcuts' no-prompt launch). */
+      openCmd: (typeof saved.openCmd === 'string' ? saved.openCmd : null) as string | null,
       boost: { ...DEFAULT_BOOST, ...(saved.boost as Partial<BoostSettings> | undefined) },
       app: { tray: true, notify: true, startWithWindows: false, weeklyClean: false, lastCleanAt: null, deviceType: 'auto', laptopProfile: false, overlayWithBoost: false, hotkeys: false, autoUpdate: true, theme: 'dark', accent: 'blue', ...savedApp,
         // Not chosen yet: the first screen asks. Copies from before Simple mode existed keep the full app.
@@ -323,13 +325,40 @@ app.whenReady().then(async () => {
     // Start with Windows: the sign-in task holds the program's path, which changed with the rename (IcyCleaner.exe ->
     // IcyTweaker.exe) and can change with the install folder. Re-point it once when the path differs.
     if (app.isPackaged && live && admin && settings.app.startWithWindows) {
+      // The marker re-makes tasks from before 0.1.13 once, at normal priority (they ran the app below normal).
       const startCmd = `"${process.execPath}" --tray`;
-      if (settings.startCmd !== startCmd)
+      const startKey = `${startCmd} #p4`;
+      if (settings.startCmd !== startKey)
         void setLogonTask(adapter, START_TASK, startCmd).then(() => {
-          settings = { ...settings, startCmd };
+          settings = { ...settings, startCmd: startKey };
           return saveSettings();
         }, () => {});
     }
+    // Open without a UAC prompt: the installer's shortcuts are pointed at the elevated Open task (schtasks /Run), so
+    // reopening from the desktop or Start menu while the app sits in the tray (or starting it at all) asks nothing.
+    // Checked at every start: an update or reinstall puts the plain exe shortcuts back.
+    // ponytail: one task for the PC's shortcuts, owned by the user who ran the app last; multi-user PCs would need per-user shortcuts.
+    if (app.isPackaged && live && admin)
+      void (async () => {
+        const user = currentUser();
+        const openCmd = `${user}|${process.execPath}`;
+        if (settings.openCmd !== openCmd) {
+          const xml = path.join(safety.dataDir, 'open-task.xml');
+          await writeFile(xml, `\ufeff${openTaskXml(process.execPath, user)}`, 'utf16le');
+          await adapter.exec(SCHTASKS, ['/Create', '/TN', OPEN_TASK, '/XML', xml, '/F'], 30_000);
+          settings = { ...settings, openCmd };
+          await saveSettings();
+        }
+        const links = [path.join(env.PUBLIC ?? 'C:\\Users\\Public', 'Desktop', 'IcyTweaker.lnk'), path.join(env.ProgramData ?? 'C:\\ProgramData', 'Microsoft', 'Windows', 'Start Menu', 'Programs', 'IcyTweaker.lnk')];
+        const q = (s: string) => `'${s.replace(/'/g, "''")}'`;
+        for (const lnk of links) {
+          if (!existsSync(lnk) || shell.readShortcutLink(lnk).target.toLowerCase() === SCHTASKS.toLowerCase()) continue;
+          // Loads the installer's shortcut and changes only target, arguments, icon and window (its app id stays).
+          // Minimized: schtasks is a console program, so its window would otherwise blink up for a moment.
+          const script = `$s = (New-Object -ComObject WScript.Shell).CreateShortcut(${q(lnk)}); $s.TargetPath = ${q(SCHTASKS)}; $s.Arguments = ${q(`/Run /TN "${OPEN_TASK}"`)}; $s.IconLocation = ${q(`${process.execPath},0`)}; $s.WorkingDirectory = ${q(path.dirname(process.execPath))}; $s.WindowStyle = 7; $s.Save()`;
+          await adapter.exec(POWERSHELL_EXE, ['-NoProfile', '-NonInteractive', '-Command', script], 30_000);
+        }
+      })().catch(() => {}); // the plain shortcuts still work (with the prompt)
     keepInTray = () => settings.app.tray;
     const detectedType = (): 'desktop' | 'laptop' => (hwCache?.hw.laptop ? 'laptop' : 'desktop');
     const deviceType = () => (settings.app.deviceType === 'auto' ? detectedType() : settings.app.deviceType);
@@ -366,6 +395,12 @@ app.whenReady().then(async () => {
           const fps = r?.fpsAvg ? ` Average ${r.fpsAvg} FPS${r.low1 ? `, 1% low ${r.low1}` : ''}.` : '';
           notify('Game Boost ended', `${game} closed after ${r?.minutes ?? 0} min.${fps}${r?.hot.length ? ` ${r.hot.join('. ')}.` : ''}`);
         }, () => {});
+        // The game has written its settings on exit by now: did it keep the ones IcyTweaker applied?
+        const profile = gameProfiles.find((g) => g.name === game);
+        if (profile)
+          void games.reverted(profile).then((keys) => {
+            if (keys.length) notify(`${game} changed settings back`, `${keys.length} of IcyTweaker's settings were put back (${keys.slice(0, 3).join(', ')}${keys.length > 3 ? '…' : ''}). Open Games to apply them again.`);
+          }, () => {});
       }
       updateTray();
     }, () => settings.app.laptopProfile && powerMonitor.isOnBatteryPower());
@@ -374,6 +409,24 @@ app.whenReady().then(async () => {
     // left over from a crash or restart is put back first.
     const focus = createFocus(adapter, safety.dataDir, (a, t, ok, d) => safety.log(a, t, ok, d));
     let focusAppsCache: { at: number; value: Promise<ReturnType<typeof parseAppChoices>> } | null = null;
+    const focusList = () => {
+      if (!focusAppsCache || Date.now() - focusAppsCache.at > 60_000) {
+        const value = adapter
+          .query(POWERSHELL_EXE, ['-NoProfile', '-NonInteractive', '-Command', APPS_SCRIPT], 60_000)
+          .catch(() => '')
+          .then((b64) => parseAppChoices(b64, existsSync, process.env));
+        focusAppsCache = { at: Date.now(), value };
+      }
+      return focusAppsCache.value;
+    };
+    /** A program file's icon as a 32 px data URL (null: none), cached (Startup Apps, Focus Mode). */
+    const fileIcon = async (file: string) => {
+      if (!appIconCache.has(file)) {
+        const img = existsSync(file) ? await app.getFileIcon(file, { size: 'normal' }).catch(() => null) : null;
+        appIconCache.set(file, img && !img.isEmpty() ? img.resize({ width: 32, height: 32, quality: 'best' }).toDataURL() : null);
+      }
+      return appIconCache.get(file) ?? null;
+    };
     // GPU makers' driver apps from the Start menu, kept a minute (one PowerShell, about a second).
     let gpuAppsCache: { at: number; value: Promise<ReturnType<typeof findGpuApps>> } | null = null;
     const gpuAppsFound = () => {
@@ -1647,15 +1700,17 @@ app.whenReady().then(async () => {
       },
 
       /** Read-only listing, kept a minute (the page asks on every visit). */
-      focusApps: () => {
-        if (!focusAppsCache || Date.now() - focusAppsCache.at > 60_000) {
-          const value = adapter
-            .query(POWERSHELL_EXE, ['-NoProfile', '-NonInteractive', '-Command', APPS_SCRIPT], 60_000)
-            .catch(() => '')
-            .then((b64) => parseAppChoices(b64, existsSync, process.env));
-          focusAppsCache = { at: Date.now(), value };
-        }
-        return focusAppsCache.value;
+      focusApps: async () => {
+        const { choices, installed } = await focusList();
+        return { choices, installed };
+      },
+
+      /** Icons for every app the Focus pickers know (from the listing's own program paths). Read-only. */
+      async focusIcons() {
+        const { paths } = await focusList();
+        const out: Record<string, string | null> = {};
+        await Promise.all(Object.entries(paths).map(async ([exe, file]) => void (out[exe] = await fileIcon(file))));
+        return out;
       },
 
       setFocus: async (on: unknown) => (typeof on === 'boolean' ? setFocusMode(on) : { ok: false, message: 'Invalid request.' }),
@@ -1850,11 +1905,7 @@ app.whenReady().then(async () => {
         await Promise.all(
           [...startupCmds.values()].map(async (i) => {
             const file = startupExe(i);
-            if (file && !appIconCache.has(file)) {
-              const img = existsSync(file) ? await app.getFileIcon(file, { size: 'normal' }).catch(() => null) : null;
-              appIconCache.set(file, img && !img.isEmpty() ? img.resize({ width: 32, height: 32, quality: 'best' }).toDataURL() : null);
-            }
-            out[i.id] = file ? (appIconCache.get(file) ?? null) : null;
+            out[i.id] = file ? await fileIcon(file) : null;
           }),
         );
         return out;

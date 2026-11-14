@@ -8,7 +8,7 @@ import { getKey, setKey } from './games/config';
 import { createGames, resolvePath, toWrites, validateValues, type GameEnv } from './games/games';
 import { gameProfiles, type GameProfile, type Key } from './games/profiles';
 import type { GameFlag } from '../shared/types';
-import { liveRead, memoryAdapter } from './system/adapter';
+import { liveRead, memoryAdapter, type SettingRef } from './system/adapter';
 import { createSafety } from './system/safety';
 import { createEngine } from './tweaks/engine';
 import { presets } from './tweaks/presets';
@@ -164,6 +164,20 @@ describe.each(gameProfiles)('$name profile', (p) => {
     expect(safety.backupCount()).toBe(0);
     for (const ref of touched) expect(await safety.read(ref)).toBe(ORIGINAL);
     expect((await games.list())[0].status).toBe('not-optimized');
+  });
+
+  it('a setting the game puts back afterwards is reported until applied again or reset', async () => {
+    const { fake, safety, games } = await setup(p);
+    expect((await games.apply(p, values)).ok).toBe(true);
+    expect((await games.list())[0].reverted).toEqual([]);
+    const ref = safety.changedRefs()[0] as Extract<SettingRef, { kind: 'configKey' }>;
+    await fake.write(ref, ORIGINAL); // the game rewrites its file (not through IcyTweaker)
+    expect((await games.list())[0].reverted).toEqual([ref.name]);
+    expect((await games.apply(p, values)).ok).toBe(true);
+    expect(await games.reverted(p)).toEqual([]);
+    await fake.write(ref, ORIGINAL);
+    await games.reset(p);
+    expect(await games.reverted(p)).toEqual([]); // nothing of ours left to check
   });
 
   it('a key missing from the file (renamed by a game update) refuses the whole apply', async () => {
