@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import clsx from 'clsx';
-import type { AppSettings, AppState, Progress, UpdateInfo } from '../../shared/types';
+import type { AppMode, AppSettings, AppState, Progress, UpdateInfo } from '../../shared/types';
 import { Icon } from '../icons';
 import { Button, FeatureCard, RISK_STYLE, Badge, Toggle, type Ask } from '../ui';
 import type { Act } from './General';
@@ -130,6 +130,7 @@ export function Settings({ state, busy, act, ask }: { state: AppState; busy: boo
         <h2 className="text-xl font-semibold text-slate-100">Settings</h2>
         <p className="text-sm text-slate-400">How IcyTweaker runs, and moving your setup to another PC.</p>
       </div>
+      <ModeSwitch />
       <ul className="space-y-2">
         {ROWS.map((r) => (
           <li key={r.key} className="flex items-center gap-4 rounded-xl border border-[var(--line)] bg-[var(--card)] px-4 py-3">
@@ -238,6 +239,46 @@ export function Settings({ state, busy, act, ask }: { state: AppState; busy: boo
       </div>
       {gubby && <Gubby onClose={() => setGubby(false)} />}
     </section>
+  );
+}
+
+/** Simple or Advanced mode. The app follows at once (icy:mode event to App). */
+function ModeSwitch() {
+  const [mode, setMode] = useState<AppMode | null>(null);
+  useEffect(() => void window.api.getSettings().then((s) => setMode(s.mode ?? 'advanced')), []);
+  // Also switched from the guide (Settings > Show the guide): follow it.
+  useEffect(() => {
+    const on = (e: Event) => setMode((e as CustomEvent<AppMode>).detail);
+    window.addEventListener('icy:mode', on);
+    return () => window.removeEventListener('icy:mode', on);
+  }, []);
+  const pick = async (m: AppMode) => {
+    setMode(m);
+    await window.api.setMode(m);
+    window.dispatchEvent(new CustomEvent('icy:mode', { detail: m }));
+  };
+  const Opt = ({ m, title, text }: { m: AppMode; title: string; text: string }) => (
+    <button
+      type="button"
+      aria-pressed={mode === m}
+      onClick={() => void pick(m)}
+      className={clsx('flex-1 rounded-lg p-3 text-left ring-1 transition', mode === m ? 'bg-sky-500/15 ring-sky-400/60' : 'bg-white/[0.03] ring-[var(--line)] hover:bg-white/[0.06]')}
+    >
+      <span className="block font-medium text-slate-100">{title}</span>
+      <span className="block text-xs text-slate-400">{text}</span>
+    </button>
+  );
+  return (
+    <div className="space-y-3 rounded-xl border border-[var(--line)] bg-[var(--card)] px-4 py-3">
+      <div>
+        <div className="font-medium text-slate-100">Mode</div>
+        <p className="text-sm text-slate-400">Switch any time. Your changes and settings stay as they are.</p>
+      </div>
+      <div className="flex flex-wrap gap-2">
+        <Opt m="simple" title="Simple" text="One Optimize button, four easy pages, plain words." />
+        <Opt m="advanced" title="Advanced" text="Every tweak, tool and setting." />
+      </div>
+    </div>
   );
 }
 

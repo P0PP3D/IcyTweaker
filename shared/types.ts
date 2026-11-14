@@ -495,6 +495,20 @@ export interface AppSettings {
   autoUpdate: boolean;
   theme: 'dark' | 'light';
   accent: Accent;
+  /** Simple mode (a few plain pages and one Optimize button) or Advanced (everything). null = not chosen yet. */
+  mode: AppMode | null;
+}
+
+export type AppMode = 'simple' | 'advanced';
+
+/** Simple mode's "Optimize my PC": what it did, in plain numbers. */
+export interface SimpleOptimizeResult extends ActionReport {
+  /** Safe settings improved this time. */
+  improved: number;
+  /** Bytes of junk cleaned. */
+  freed: number;
+  /** The Safe Optimize preset's estimate (labelled an estimate). */
+  estimate: string | null;
 }
 
 export type Accent = 'blue' | 'cyan' | 'violet' | 'emerald' | 'indigo';
@@ -969,6 +983,12 @@ export interface OptimizerApi {
   /** The primary display's modes (Game Boost display option). */
   displayModes(): Promise<DisplayMode[]>;
   getSettings(): Promise<AppSettings>;
+  /** Switch between Simple and Advanced mode. */
+  setMode(mode: AppMode): Promise<AppSettings>;
+  /** Simple mode's one button: restore point, the Safe Optimize preset, the safe cleanup, weekly cleanup on. */
+  simpleOptimize(): Promise<SimpleOptimizeResult>;
+  /** Free and total space of the Windows drive. */
+  systemDrive(): Promise<{ free: number; total: number } | null>;
   setSettings(s: Omit<AppSettings, 'lastCleanAt'>): Promise<AppSettings>;
   /** Folders the finders may scan (drives and your user folder). */
   findRoots(): Promise<string[]>;

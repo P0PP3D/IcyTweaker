@@ -1,7 +1,44 @@
-import { useState, type ReactNode } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import clsx from 'clsx';
 import type { Risk, TweakStatus, TweakTag, TweakView } from '../shared/types';
 import { Icon, type IconName } from './icons';
+
+const FOCUSABLE = 'button:not([disabled]),a[href],input:not([disabled]),select:not([disabled]),textarea:not([disabled]),[tabindex]:not([tabindex="-1"])';
+
+/**
+ * Modal focus handling for a dialog's root element: moves focus to its first control, keeps Tab inside it,
+ * calls onEscape on Escape and gives focus back when it closes. `key` re-runs it when the dialog's element changes.
+ */
+export function useModal<T extends HTMLElement = HTMLDivElement>(onEscape?: () => void, key?: unknown) {
+  const ref = useRef<T>(null);
+  const esc = useRef(onEscape);
+  esc.current = onEscape;
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    const before = document.activeElement as HTMLElement | null;
+    const items = () => [...el.querySelectorAll<HTMLElement>(FOCUSABLE)];
+    items()[0]?.focus();
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') return esc.current?.();
+      if (e.key !== 'Tab') return;
+      const f = items();
+      const at = document.activeElement;
+      if (!f.length) return e.preventDefault();
+      const [first, last] = [f[0], f[f.length - 1]];
+      if (!el.contains(at) || (e.shiftKey ? at === first : at === last)) {
+        e.preventDefault();
+        (e.shiftKey ? last : first).focus();
+      }
+    };
+    document.addEventListener('keydown', onKey);
+    return () => {
+      document.removeEventListener('keydown', onKey);
+      before?.focus?.();
+    };
+  }, [key]);
+  return ref;
+}
 
 export const RISK_STYLE: Record<Risk, string> = {
   safe: 'bg-emerald-500/15 text-emerald-300 ring-emerald-500/30',
@@ -329,9 +366,10 @@ export function ConfirmDialog({
 }) {
   const [typed, setTyped] = useState('');
   const blocked = !!typeToConfirm && typed.trim() !== typeToConfirm;
+  const dialog = useModal(() => onClose(false)); // focus lands on Cancel (or the type-to-confirm box), never on the action
   return (
     <div className="fixed inset-0 z-20 flex items-center justify-center bg-black/70 p-6 backdrop-blur-sm" role="alertdialog" aria-modal="true" aria-labelledby="confirm-title">
-      <div className="w-full max-w-md space-y-4 rounded-2xl border border-[var(--line)] bg-[var(--card)] p-6 shadow-2xl">
+      <div ref={dialog} className="w-full max-w-md space-y-4 rounded-2xl border border-[var(--line)] bg-[var(--card)] p-6 shadow-2xl">
         <h2 id="confirm-title" className="text-lg font-semibold text-slate-100">
           {title}
         </h2>

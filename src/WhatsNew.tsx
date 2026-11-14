@@ -3,7 +3,7 @@ import clsx from 'clsx';
 import changelog from '../CHANGELOG.md?raw';
 import { boldParts, noteLines, parseChangelog, unseen } from '../shared/changelog';
 import { Icon } from './icons';
-import { Button } from './ui';
+import { Button, useModal } from './ui';
 
 const SECTIONS = parseChangelog(changelog);
 
@@ -30,9 +30,10 @@ const Bold = ({ s }: { s: string }) => (
 /** "What's new" after an update: what changed in every version since the one the user had. */
 export function WhatsNew({ current, seen, onClose }: { current: string; seen: string | null; onClose: () => void }) {
   const sections = notesSince(current, seen);
+  const dialog = useModal(onClose);
   return (
     <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/70 p-6 backdrop-blur-sm" role="dialog" aria-modal="true" aria-labelledby="whats-new-title">
-      <div className="page-in flex max-h-[85vh] w-full max-w-xl flex-col gap-4 rounded-2xl bg-[var(--panel)] p-6 shadow-2xl ring-1 ring-[var(--line)]">
+      <div ref={dialog} className="page-in flex max-h-[85vh] w-full max-w-xl flex-col gap-4 rounded-2xl bg-[var(--panel)] p-6 shadow-2xl ring-1 ring-[var(--line)]">
         <div className="flex items-center gap-3">
           <span className="grid h-11 w-11 place-items-center rounded-xl bg-sky-500/10 text-sky-300 ring-1 ring-sky-500/25">
             <Icon name="sparkles" className="h-5 w-5" />

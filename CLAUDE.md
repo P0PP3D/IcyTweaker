@@ -243,3 +243,8 @@ Full spec: `docs/SPEC.md`. Work one phase of its "Build order" at a time.
   requires a CHANGELOG section for package.json's version: write it before bumping. Keep the easter egg out of it.
   GPU driver apps: `GPU_APPS` + Get-StartApps (`findGpuApps`), opened via explorer shell:AppsFolder. DDU runs with
   -NoSafeModeMsg (checked in DDU's source), found via App Paths too; its exit code is ignored (the restart is the signal).
+- 0.1.12 Simple mode: settings.app.mode ('simple' | 'advanced' | null = ask on first screen; pre-0.1.12 users = advanced).
+  Onboarding.tsx: ModeChoice first, then simpleSteps / advancedSteps. pages/Simple.tsx (SimpleHome, SimpleClean,
+  SimplePlay, SimpleUndo; no timers). App: SIMPLE_PAGES, simpleSections, `icy:mode` event (Settings ModeSwitch).
+  Main `simpleOptimize` = applyPreset('safe-optimize') (makes its own restore point) + safeClean + weeklyClean on.
+  Never wrap engine calls in the exported withRestorePoint/serial: they share the engine queue (deadlock).

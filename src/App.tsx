@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import clsx from 'clsx';
-import type { ActionReport, AppState, DriverJobView, Progress, Risk } from '../shared/types';
+import type { ActionReport, AppMode, AppState, DriverJobView, Progress, Risk } from '../shared/types';
 import { Settings } from './pages/Settings';
 import { Devices } from './pages/Devices';
 import { Startup } from './pages/Startup';
@@ -10,6 +10,7 @@ import { WinFeatures } from './pages/WinFeatures';
 import { Duplicates, OldFiles, Privacy } from './pages/Finder';
 import { Onboarding } from './Onboarding';
 import { WhatsNew, notesSince } from './WhatsNew';
+import { SimpleClean, SimpleHome, SimplePlay, SimpleUndo } from './pages/Simple';
 import { Debloater } from './pages/Debloater';
 import { Fixes } from './pages/Fixes';
 import { General, appliedCount, tweakHandlers } from './pages/General';
@@ -29,8 +30,10 @@ import { Icon, Logo, type IconName } from './icons';
 import { Banner, Button, ConfirmDialog, Loading, TweakRow, type Ask } from './ui';
 import { applyTheme } from './theme';
 
-const PAGES = ['home', 'general', 'debloater', 'fixes', 'presets', 'restore', 'services', 'network', 'resources', 'games', 'appopt', 'advanced', 'bios', 'health', 'smart', 'browsers', 'apps', 'analyzer', 'drives', 'duplicates', 'oldfiles', 'privacy', 'recycle', 'settings', 'devices', 'startup', 'focus', 'olddrivers', 'features'] as const;
+const PAGES = ['home', 'general', 'debloater', 'fixes', 'presets', 'restore', 'services', 'network', 'resources', 'games', 'appopt', 'advanced', 'bios', 'health', 'smart', 'browsers', 'apps', 'analyzer', 'drives', 'duplicates', 'oldfiles', 'privacy', 'recycle', 'settings', 'devices', 'startup', 'focus', 'olddrivers', 'features', 'cleanup', 'play', 'undo'] as const;
 type Page = (typeof PAGES)[number];
+/** The pages Simple mode has (its sidebar). */
+const SIMPLE_PAGES: Page[] = ['home', 'cleanup', 'play', 'undo', 'settings'];
 /** Pages that stay mounted (hidden) after you leave them: their long jobs keep their progress and results. None polls on a timer. */
 const KEEP_ALIVE = new Set<Page>(['analyzer', 'duplicates', 'oldfiles', 'resources', 'debloater', 'network', 'smart', 'browsers', 'apps', 'health', 'olddrivers', 'drives']);
 type Confirm = { title: string; body: string; confirmLabel: string; typeToConfirm?: string; resolve: (ok: boolean) => void };
@@ -211,7 +214,27 @@ export function App() {
     return window.api.onProgress((p) => p.task === 'update' && !p.current && p.total > 0 && void window.api.updateReady().then(setAppUpdate));
   }, []);
   useEffect(() => void window.api.windowsUpdateInfo().then(setWinUpdate), []);
-  useEffect(() => void window.api.getSettings().then(applyTheme), []);
+  const [mode, setMode] = useState<AppMode | null | undefined>(undefined); // undefined: settings not read yet (no sidebar, so Simple users don't see Advanced flash)
+  // Simple mode shows only its own pages: a remembered Advanced page (or one switched away from) goes to Home.
+  useEffect(() => {
+    if (mode === 'simple' && !SIMPLE_PAGES.includes(page)) setPage('home');
+    // And back: Advanced has no Clean up / Games / Undo items (they'd render with nothing highlighted).
+    if (mode === 'advanced' && (page === 'cleanup' || page === 'play' || page === 'undo')) setPage('home');
+  }, [mode, page]);
+  // Settings switches modes through this event.
+  useEffect(() => {
+    const onMode = (e: Event) => setMode((e as CustomEvent<AppMode>).detail);
+    window.addEventListener('icy:mode', onMode);
+    return () => window.removeEventListener('icy:mode', onMode);
+  }, []);
+  useEffect(
+    () =>
+      void window.api.getSettings().then((s) => {
+        applyTheme(s);
+        setMode(s.mode);
+      }),
+    [],
+  );
   // Remember the page between runs.
   useEffect(() => {
     try {
@@ -270,7 +293,20 @@ export function App() {
   // Security trade-offs that are on (performance-only Risky tweaks such as MSI mode don't lower protection).
   const riskyActive = state.tweaks.filter((t) => t.risk === 'risky' && t.category === 'security' && (t.status === 'applied' || t.status === 'partial'));
 
-  const sections: Array<{ title: string; items: NavItem[] }> = [
+  // Simple mode: four plain pages and Settings. Everything else stays one switch away (Settings > Mode).
+  const simpleSections: Array<{ title: string; items: NavItem[] }> = [
+    {
+      title: 'IcyTweaker',
+      items: [
+        { id: 'home', label: 'Home', icon: 'home' },
+        { id: 'cleanup', label: 'Clean up', icon: 'trash' },
+        { id: 'play', label: 'Games', icon: 'gamepad' },
+        { id: 'undo', label: 'Undo', icon: 'undo' },
+        { id: 'settings', label: 'Settings', icon: 'sliders' },
+      ],
+    },
+  ];
+  const advancedSections: Array<{ title: string; items: NavItem[] }> = [
     {
       title: 'General',
       items: [
@@ -316,6 +352,7 @@ export function App() {
       ],
     },
   ];
+  const sections = mode === 'simple' ? simpleSections : advancedSections;
   const current = sections.flatMap((s) => s.items).find((i) => i.id === page) ?? sections[0].items[0];
   const pageProps = { state, busy, act, ask };
   const go = (id: Page) => {
@@ -326,7 +363,17 @@ export function App() {
   /** One page by id (the switch used to be inline; kept pages render it once each). */
   const view = (id: Page) =>
     id === 'home' ? (
-      <Home state={state} go={go} />
+      mode === 'simple' ? (
+        <SimpleHome state={state} act={act} go={(p) => go(p)} />
+      ) : (
+        <Home state={state} go={go} />
+      )
+    ) : id === 'cleanup' ? (
+      <SimpleClean state={state} act={act} ask={ask} />
+    ) : id === 'play' ? (
+      <SimplePlay act={act} />
+    ) : id === 'undo' ? (
+      <SimpleUndo state={state} act={act} ask={ask} />
     ) : id === 'general' ? (
               <General {...pageProps} />
             ) : id === 'debloater' ? (
@@ -413,7 +460,7 @@ export function App() {
           <button className="mx-auto mb-2 rounded-md p-2 text-slate-500 hover:bg-white/10 hover:text-slate-200" aria-label="Expand sidebar" onClick={() => setCollapsed(false)}>
             <Icon name="panel" className="h-4 w-4" />
           </button>
-        ) : (
+        ) : mode === 'simple' || mode === undefined ? null : (
           <label className="mx-3 mb-1 flex items-center gap-2 rounded-lg border border-[var(--line)] bg-white/[0.03] px-3 py-1.5 focus-within:border-sky-500/50">
             <Icon name="search" className="h-4 w-4 text-slate-500" />
             <input
@@ -429,12 +476,13 @@ export function App() {
         )}
 
         <nav className="flex-1 overflow-y-auto px-3 pb-3">
-          {sections.map((s) => {
+          {mode !== undefined && sections.map((s) => {
             // A folded section still shows the page you're on, so you never lose your place.
             const folded = !collapsed && foldedSections.includes(s.title);
             return (
             <div key={s.title} className="pt-3">
-              {!collapsed && (
+              {/* Simple mode has one short list: no section header to fold. */}
+              {!collapsed && mode !== 'simple' && (
                 <button
                   onClick={() => toggleSection(s.title)}
                   aria-expanded={!folded}
@@ -566,7 +614,8 @@ export function App() {
                 </Button>
               </Banner>
             )}
-            {state.rebootPending.length > 0 && (
+            {/* Simple Home has its own plain "Restart to finish" line. */}
+            {state.rebootPending.length > 0 && mode !== 'simple' && (
               <Banner tone="reboot">
                 <span>Restart (or sign out) to finish: {state.rebootPending.join(', ')}.</span>
                 <Button disabled={busy} onClick={() => act(() => window.api.restart())}>
@@ -648,6 +697,12 @@ export function App() {
       {(!state.onboarded || guide) && (
         <Onboarding
           state={state}
+          mode={mode ?? null}
+          onMode={(m) => {
+            window.dispatchEvent(new CustomEvent('icy:mode', { detail: m })); // App and Settings' Mode card follow
+            void window.api.setMode(m);
+            if (m === 'simple') go('home'); // Advanced-only pages aren't in Simple mode's sidebar
+          }}
           go={(p) => go(p)}
           onDone={async () => {
             setGuide(false);

@@ -2,6 +2,20 @@
 
 Each section becomes the description of its GitHub release (see .github/workflows/release-notes.yml).
 
+## v0.1.12
+
+**New**
+- **Simple mode**, for anyone who'd rather not deal with PC settings. Choose it on the first screen, or switch any time in Settings. It has four plain pages:
+  - **Home:** one **Optimize my PC** button (safe settings on, junk cleaned, weekly cleanup on), and a traffic-light health check (free space, graphics driver age, restart needed, weekly cleanup) with a one-click fix for each.
+  - **Clean up:** junk files and the Recycle Bin, one button each.
+  - **Games:** Game Boost and Focus Mode as two switches.
+  - **Undo:** put back today's changes, everything, or roll Windows back.
+- **A first screen that asks Simple or Advanced**, explains the difference, and shows a tutorial made for the mode you pick.
+- **Mode switch in Settings.**
+
+**Improved**
+- Dialogs work from the keyboard: focus moves into them, Tab stays inside, and Escape closes or cancels. Confirmations start on Cancel.
+
 ## v0.1.11
 
 **New**

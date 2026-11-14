@@ -56,7 +56,7 @@ const ACCENTS: Accent[] = ['blue', 'cyan', 'violet', 'emerald', 'indigo'];
 import { createStartup, exeOf, startupSources } from './apps/startup';
 import { RUNTIMES, installRuntimes, wingetPath } from './resources/runtimes';
 import { LATENCY_TARGETS, dnsBenchmark, latencyTest, tcpProbe, validHost } from './network/tests';
-import { appendFile, copyFile, mkdir, readdir, readFile, writeFile } from 'node:fs/promises';
+import { appendFile, copyFile, mkdir, readdir, readFile, statfs, writeFile } from 'node:fs/promises';
 
 // The app was renamed IcyCleaner -> IcyTweaker. Its data folder keeps the old name: the backups Undo needs, the
 // settings and the logs are there. (An explicit --user-data-dir, as in tests, still wins.)
@@ -296,7 +296,9 @@ app.whenReady().then(async () => {
       /** The command the Start with Windows task was last pointed at. */
       startCmd: (typeof saved.startCmd === 'string' ? saved.startCmd : null) as string | null,
       boost: { ...DEFAULT_BOOST, ...(saved.boost as Partial<BoostSettings> | undefined) },
-      app: { tray: true, notify: true, startWithWindows: false, weeklyClean: false, lastCleanAt: null, deviceType: 'auto', laptopProfile: false, overlayWithBoost: false, hotkeys: false, autoUpdate: true, theme: 'dark', accent: 'blue', ...savedApp } as AppSettings,
+      app: { tray: true, notify: true, startWithWindows: false, weeklyClean: false, lastCleanAt: null, deviceType: 'auto', laptopProfile: false, overlayWithBoost: false, hotkeys: false, autoUpdate: true, theme: 'dark', accent: 'blue', ...savedApp,
+        // Not chosen yet: the first screen asks. Copies from before Simple mode existed keep the full app.
+        mode: savedApp.mode === 'simple' || savedApp.mode === 'advanced' ? savedApp.mode : saved.onboarded === true ? 'advanced' : null } as AppSettings,
       /**
        * The app version whose "What's new" the user has seen. Missing on a fresh install (the beginner guide shows
        * instead) and on copies updated from before 0.1.11 (onboarded already: they get this version's notes).
@@ -440,19 +442,24 @@ app.whenReady().then(async () => {
       if (Date.now() - last < 7 * 86_400_000 || powerMonitor.getSystemIdleTime() < 600) return;
       await safeClean('Weekly Health Check done');
     }
-    /** The Health Check's safe, default-selected targets (weekly timer and the tray's Clean now). */
-    async function safeClean(title: string) {
+    /**
+     * The Health Check's safe, default-selected targets (weekly timer, the tray's Clean now, Simple mode's Optimize).
+     * title null: no notification (Optimize shows its own summary). Returns the bytes freed.
+     */
+    async function safeClean(title: string | null, onTarget?: (i: number, total: number, name: string) => void) {
       settings = { ...settings, app: { ...settings.app, lastCleanAt: new Date().toISOString() } };
       await saveSettings();
       const targets = (await cleaner.list()).filter((t) => t.risk === 'safe' && t.defaultSelected && (!t.requiresAdmin || admin || !live));
       const procs = await runningProcesses(adapter);
       let freed = 0;
-      for (const t of targets) {
+      for (const [i, t] of targets.entries()) {
+        onTarget?.(i, targets.length, t.name);
         const r = await cleaner.clean(cleaner.get(t.id)!, procs).catch(() => null);
         freed += r?.freed ?? 0;
       }
       await safety.log('scheduled-clean', `${targets.length} target(s)`, true, `${freed} bytes${live ? '' : ' (dry-run)'}`);
-      notify(title, `${live ? 'Freed' : 'Would free'} ${(freed / 1024 ** 2).toFixed(0)} MB.`);
+      if (title) notify(title, `${live ? 'Freed' : 'Would free'} ${(freed / 1024 ** 2).toFixed(0)} MB.`);
+      return freed;
     }
     setInterval(() => void weeklyClean().catch(() => {}), 15 * 60_000);
     const boostTimer = setInterval(() => {
@@ -1384,6 +1391,53 @@ app.whenReady().then(async () => {
 
       // ---- Settings, export / import
       getSettings: async () => settings.app,
+
+      async setMode(mode: unknown) {
+        if (mode !== 'simple' && mode !== 'advanced') return settings.app;
+        settings = { ...settings, app: { ...settings.app, mode } };
+        await saveSettings();
+        await safety.log('settings', 'mode', true, mode);
+        return settings.app;
+      },
+
+      /**
+       * Simple mode's "Optimize my PC": only what the app already does safely, in order. A restore point first (if it
+       * fails, nothing changes), the Safe Optimize preset (Safe tweaks only: presets skip Risky and
+       * Preference tweaks), the Health Check's safe cleanup, and the weekly automatic cleanup turned on.
+       */
+      async simpleOptimize() {
+        const preset = presets.find((p) => p.id === 'safe-optimize');
+        const applied = async () => {
+          const ids = new Set(preset?.tweakIds ?? []);
+          return (await engine.getState()).tweaks.filter((t) => ids.has(t.id) && t.status === 'applied').length;
+        };
+        const label = 'Optimizing your PC';
+        progress({ task: 'bulk', label, done: 0, total: 0, current: 'Making a restore point first…' });
+        try {
+          // The preset makes the restore point itself (and changes nothing if that fails). Not wrapped in the exported
+          // withRestorePoint: that holds the engine's queue, and the preset waits on the same queue (a deadlock).
+          const before = await applied();
+          const r = await engine.applyPreset('safe-optimize');
+          if (!r.ok && /restore point failed/i.test(r.message)) return { ok: false, message: r.message, improved: 0, freed: 0, estimate: preset?.estimate ?? null };
+          // The preset's own progress just cleared: put the overlay straight back so it doesn't blink off before cleanup.
+          progress({ task: 'bulk', label: 'Cleaning up', done: 0, total: 0, current: 'Finding junk files…' });
+          const improved = Math.max(0, (await applied()) - before);
+          // Junk files only (temp files and caches the apps make again); a restore point doesn't cover files anyway.
+          const freed = await safeClean(null, (i, total, name) => progress({ task: 'bulk', label: 'Cleaning up', done: i, total, current: name }));
+          settings = { ...settings, app: { ...settings.app, weeklyClean: true } };
+          await saveSettings();
+          return { ok: r.ok, message: r.ok ? 'Done.' : r.message, improved, freed, estimate: preset?.estimate ?? null };
+        } finally {
+          progress({ task: 'bulk', done: 0, total: 0, current: '' });
+        }
+      },
+
+      /** Free and total space of the Windows drive (read-only). */
+      async systemDrive() {
+        const root = `${(env.SystemDrive ?? 'C:').replace(/\\$/, '')}\\`;
+        const s = await statfs(root).catch(() => null);
+        return s ? { free: s.bavail * s.bsize, total: s.blocks * s.bsize } : null;
+      },
 
       async setSettings(next: unknown) {
         const n = next as Partial<AppSettings> | null;
