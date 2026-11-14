@@ -175,15 +175,6 @@ export function Focus({ busy, act, ask }: { busy: boolean; act: Act; ask: Ask })
             </span>
             <Toggle on={s.reopen} label="Reopen closed apps" disabled={busy} onChange={(v) => void save({ reopen: v })} />
           </label>
-          <label className="flex items-center justify-between gap-3 rounded-xl bg-[var(--card)] px-4 py-3 text-sm text-slate-200 ring-1 ring-[var(--line)]">
-            <span>
-              Shut down WSL
-              <span className="block text-xs text-slate-500">
-                Frees the memory Linux on Windows (vmmemWSL) holds, if it's running. Linux programs in it stop; it starts again the next time you use it.
-              </span>
-            </span>
-            <Toggle on={!!s.wsl} label="Shut down WSL" disabled={busy || active} onChange={(v) => void save({ wsl: v })} />
-          </label>
         </div>
       </div>
       {active && <p className="text-xs text-slate-500">Turn Focus Mode off to change the lists.</p>}

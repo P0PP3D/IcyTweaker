@@ -253,7 +253,7 @@ Full spec: `docs/SPEC.md`. Work one phase of its "Build order" at a time.
   re-checked every start (live + packaged + admin; `settings.openCmd` = user|exe). Uninstall deletes Open and Start tasks.
 - Focus apps: one list (built-in + added). `custom` = added and ticked, `customOff` = added, unticked; right-click an
   added row removes it (confirm). Icons: main `focusIcons` from `parseAppChoices().paths` (never renderer paths), shared
-  `fileIcon` cache with Startup Apps. Focus `wsl` option: `wsl --shutdown` only if `wsl -l --running -q` lists a distro.
+  `fileIcon` cache with Startup Apps.
 - Sign-in tasks get priority 4 after /Create (`taskPriorityScript`; schtasks' default 7 = below normal). `startCmd` has a
   ` #p4` marker so pre-0.1.13 Start tasks are re-made once.
 - Game settings check: `games.ts` keeps the values each apply wrote in `game-applied.json` (data dir, per mode);

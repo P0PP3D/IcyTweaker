@@ -250,22 +250,6 @@ describe('Focus Mode', () => {
     expect(again.state()).toBeNull();
     expect(await createFocus(fake, d, log).resume()).toBeNull();
   });
-  it('shuts WSL down only when asked and a distro is running', async () => {
-    let distros = '';
-    const fake = memoryAdapter(undefined, async (f) => (f.endsWith('wsl.exe') ? distros : ''));
-    const d = dir();
-    await mkdir(d, { recursive: true });
-    const shutdowns = () => fake.commands.filter((c) => c[0].endsWith('wsl.exe') && c[1] === '--shutdown').length;
-    const f = createFocus(fake, d, async () => {});
-    await f.on({ ...DEFAULT_FOCUS, wsl: true, apps: [] }); // nothing running
-    await f.off(false);
-    distros = 'U\0b\0u\0n\0t\0u\0\r\0\n\0'; // wsl.exe prints UTF-16
-    await f.on({ ...DEFAULT_FOCUS, wsl: false, apps: [] }); // not asked
-    await f.off(false);
-    expect(shutdowns()).toBe(0);
-    expect(await f.on({ ...DEFAULT_FOCUS, wsl: true, apps: [] })).toMatch(/WSL shut down/);
-    expect(shutdowns()).toBe(1);
-  });
 });
 
 describe('startup apps', () => {

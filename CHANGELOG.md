@@ -7,8 +7,6 @@ Each section becomes the description of its GitHub release (see .github/workflow
 **New**
 - **No more admin prompt when you reopen IcyTweaker** from the desktop or Start menu (after the first start following an install).
 - **Game settings check:** if a game puts back settings IcyTweaker applied, its Games card says which ones, and Game Boost tells you when the game closes.
-- **Focus Mode can shut down WSL**, freeing the memory Linux on Windows (vmmemWSL) holds while you play. Off by default.
-
 **Improved**
 - **Focus Mode apps in one list:** apps you add join the built-in ones, each with its icon. Right-click an app you added to remove it.
 - **Start with Windows runs IcyTweaker at normal priority** (it ran below normal before).

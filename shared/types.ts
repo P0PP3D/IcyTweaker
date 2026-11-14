@@ -776,16 +776,12 @@ export interface FocusSettings {
   reopen: boolean;
   /** Turn on by itself when Game Boost starts a game, and off when it ends. */
   withBoost?: boolean;
-  /** Shut down WSL (its vmmemWSL virtual machine) when Focus Mode turns on, if a distro runs. */
-  wsl?: boolean;
 }
 /** While Focus Mode is on: what it actually stopped and closed. */
 export interface FocusState {
   since: string;
   services: string[];
   apps: Array<{ name: string; path: string }>;
-  /** WSL was shut down (nothing to restart: it starts when next used). */
-  wsl?: boolean;
 }
 export interface FocusInfo {
   settings: FocusSettings;

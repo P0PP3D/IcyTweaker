@@ -113,7 +113,6 @@ export const DEFAULT_FOCUS: FocusSettings = {
   exceptions: [],
   reopen: true,
   withBoost: false,
-  wsl: false,
 };
 
 const EXE = /^[\w .()&+-]{1,80}\.exe$/i;
@@ -135,13 +134,10 @@ export function validateFocus(raw: unknown): FocusSettings | null {
     exceptions: [...new Set(r.exceptions.map(exe).filter((x): x is string => !!x))].slice(0, 100),
     reopen: r.reopen,
     withBoost: r.withBoost === true,
-    wsl: r.wsl === true,
   };
 }
 
-const ps = (script: string) => ['-NoProfile', '-NonInteractive', '-Command', script];
-const WSL_EXE = path.join(process.env.SystemRoot ?? 'C:\\Windows', 'System32', 'wsl.exe');
-const quote = (s: string) => `'${s.replace(/'/g, "''")}'`;
+const ps = (script: string) => ['-NoProfile', '-NonInteractive', '-Command', script];const quote = (s: string) => `'${s.replace(/'/g, "''")}'`;
 
 export function createFocus(adapter: SystemAdapter, dataDir: string, log: (action: string, target: string, ok: boolean, detail?: string) => Promise<void>) {
   const file = path.join(dataDir, 'focus-state.json');
@@ -182,17 +178,9 @@ export function createFocus(adapter: SystemAdapter, dataDir: string, log: (actio
         .filter((p) => p.length === 2 && p[1])
         .map(([name, p]) => ({ name: `${name}.exe`, path: p }));
     };
-    // WSL (opt-in): its virtual machine (vmmemWSL) holds memory until shut down. Only when a distro runs; Linux
-    // programs in it stop. Nothing to put back: WSL starts again by itself the next time it's used.
-    const wsl = async () => {
-      if (!s.wsl) return;
-      const running = await adapter.query(WSL_EXE, ['--list', '--running', '--quiet']).catch(() => ''); // UTF-16 names; exits non-zero when none
-      if (!running.replace(/\0/g, '').trim()) return;
-      st.wsl = await adapter.exec(WSL_EXE, ['--shutdown'], 60_000).then(() => true, () => false);
-    };
-    await Promise.all([services(), apps(), wsl()]);
+    await Promise.all([services(), apps()]);
     await save();
-    const msg = `${state.services.length} service(s) stopped, ${state.apps.length} app(s) closed${state.wsl ? ', WSL shut down' : ''}`;
+    const msg = `${state.services.length} service(s) stopped, ${state.apps.length} app(s) closed`;
     await log('focus-on', 'Focus Mode', true, `${msg}${adapter.live ? '' : ' (dry-run)'}`);
     return `Focus Mode on: ${msg}${adapter.live ? '' : ' (dry-run: nothing was stopped)'}.`;
   }
