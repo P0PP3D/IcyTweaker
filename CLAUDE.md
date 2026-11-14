@@ -263,5 +263,11 @@ Full spec: `docs/SPEC.md`. Work one phase of its "Build order" at a time.
   85 °C). Main starts `startFanControl` on a boost start (live + admin + LHM only; dry-run only logs), stops it on end
   and quit. Node computes the duty (`fanDuty`); the PowerShell helper reads one order per round from stdin and calls
   SetDefault on stop / closed pipe / exit. `fanChannels` = read-only list. verify: SetSoftware on real boards.
+  `testFans(pct)` = adapter.exec of `fanTestScript` (10 s, finally SetDefault; refused during a curve session).
+  `sensorsNow` = read-only `sensorLoop` reader (CPU/GPU °C, fan RPM / %), started on ask, killed 10 s after the last
+  ask: it only runs while the Game Boost page polls it. Pages: 'games' (profiles), 'boost' (`BoostPage`: sensors +
+  Game Boost + overlay), 'performance' (`PerformancePage`), all in Games.tsx.
+- Only an installed copy (exe under Program Files, `installedCopy`) manages the Open / Start tasks, so a build run
+  from release\win-unpacked doesn't re-point them at itself.
 - `TweakMeta.findInDebloater`: the card shows "Remove in Debloater" (event `icy:debloat` -> App -> Debloater `find`:
   Store tab, filter, matching unprotected app ticked) instead of the switch while not applied. Used by Widgets Off.

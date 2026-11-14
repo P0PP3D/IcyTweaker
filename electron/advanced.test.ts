@@ -310,3 +310,16 @@ describe('fan curves', () => {
     expect(v.fanCurve).toBeNull();
   });
 });
+
+describe('fan test', () => {
+  it('always gives the fans back to the BIOS and reports speed before and while held', async () => {
+    const { fanTestScript, parseFanTest } = await import('./system/fans');
+    const s = fanTestScript('C:\\tools\\lhm', 70, 10);
+    expect(s).toContain('SetSoftware(70)');
+    expect(s).toMatch(/finally \{ foreach \(\$f in \$fans\) \{ \$f\.Control\.SetDefault\(\) \}/);
+    expect(parseFanTest('before|CPU Fan|900\r\nbefore|Fan #2|0\r\nafter|CPU Fan|1450\r\nnoise\r\nafter|Fan #2|700\r\n')).toEqual([
+      { name: 'CPU Fan', before: 900, after: 1450 },
+      { name: 'Fan #2', before: 0, after: 700 },
+    ]);
+  });
+});

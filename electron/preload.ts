@@ -100,6 +100,8 @@ const api: OptimizerApi = {
   focusApps: call('focusApps'),
   focusIcons: call('focusIcons'),
   fanChannels: call('fanChannels'),
+  sensorsNow: call('sensorsNow'),
+  testFans: call('testFans'),
   setFocus: call('setFocus'),
   getSettings: call('getSettings'),
   setMode: call('setMode'),

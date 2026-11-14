@@ -9,7 +9,10 @@ Each section becomes the description of its GitHub release (see .github/workflow
 - **Game settings check:** if a game puts back settings IcyTweaker applied, its Games card says which ones, and Game Boost tells you when the game closes.
 - **Fan curves per game:** in Game Boost's options, draw a curve (CPU temperature to fan speed) for all games or one game. The motherboard's fans follow it while that game runs and go back to your BIOS settings when it closes. Fans never drop below 30 % and run at 100 % from 85 °C. Needs the CPU temperature setup; most laptops don't allow fan control. **Check fans** shows which fans can be controlled.
 
+- **Live temperatures and fan speeds** on the Game Boost page (CPU, graphics card, each fan's RPM and power), plus a **fan speed test** that holds the fans at a speed you pick for 10 seconds, no game needed.
+
 **Changed**
+- **Game Boost and Performance are now their own pages** in the sidebar (they were tabs of Game Profiles), and every Game Boost option explains what it does.
 - **Widgets Off** now has a **Remove in Debloater** button instead of a switch (Windows blocks other programs from changing that setting). It opens the Debloater with Widgets (Windows Web Experience Pack) already found and ticked.
 - New banners for Dead by Daylight and The Outlast Trials.
 **Improved**

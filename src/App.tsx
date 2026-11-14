@@ -23,14 +23,14 @@ import { DriveHealth } from './pages/DriveHealth';
 import { Services } from './pages/Services';
 import { Network } from './pages/Network';
 import { Resources } from './pages/Resources';
-import { Games } from './pages/Games';
+import { BoostPage, Games, PerformancePage } from './pages/Games';
 import { AppOptimizer } from './pages/AppOptimizer';
 import { Advanced, Bios } from './pages/Advanced';
 import { Icon, Logo, type IconName } from './icons';
 import { Banner, Button, ConfirmDialog, Loading, TweakRow, type Ask } from './ui';
 import { applyTheme } from './theme';
 
-const PAGES = ['home', 'general', 'debloater', 'fixes', 'presets', 'restore', 'services', 'network', 'resources', 'games', 'appopt', 'advanced', 'bios', 'health', 'smart', 'browsers', 'apps', 'analyzer', 'drives', 'duplicates', 'oldfiles', 'privacy', 'recycle', 'settings', 'devices', 'startup', 'focus', 'olddrivers', 'features', 'cleanup', 'play', 'undo'] as const;
+const PAGES = ['home', 'general', 'debloater', 'fixes', 'presets', 'restore', 'services', 'network', 'resources', 'games', 'appopt', 'advanced', 'bios', 'health', 'smart', 'browsers', 'apps', 'analyzer', 'drives', 'duplicates', 'oldfiles', 'privacy', 'recycle', 'settings', 'devices', 'startup', 'focus', 'olddrivers', 'features', 'cleanup', 'play', 'undo', 'boost', 'performance'] as const;
 type Page = (typeof PAGES)[number];
 /** The pages Simple mode has (its sidebar). */
 const SIMPLE_PAGES: Page[] = ['home', 'cleanup', 'play', 'undo', 'settings'];
@@ -323,6 +323,8 @@ export function App() {
         { id: 'network', label: 'Networking', icon: 'network' },
         { id: 'services', label: 'Services', icon: 'services' },
         { id: 'games', label: 'Game Profiles', icon: 'gamepad' },
+        { id: 'boost', label: 'Game Boost', icon: 'sparkles' },
+        { id: 'performance', label: 'Performance', icon: 'pulse' },
         { id: 'focus', label: 'Focus Mode', icon: 'bolt' },
         { id: 'appopt', label: 'App Optimizer', icon: 'app' },
         { id: 'devices', label: 'Devices', icon: 'laptop' },
@@ -388,6 +390,10 @@ export function App() {
               <Bios busy={busy} act={act} />
             ) : id === 'games' ? (
               <Games busy={busy} act={act} ask={ask} />
+            ) : id === 'boost' ? (
+              <BoostPage busy={busy} act={act} />
+            ) : id === 'performance' ? (
+              <PerformancePage busy={busy} />
             ) : id === 'appopt' ? (
               <AppOptimizer {...pageProps} />
             ) : id === 'health' ? (

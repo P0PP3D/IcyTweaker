@@ -396,6 +396,18 @@ export interface DriverLatency {
   maxUs: number;
 }
 
+/** Live readings for the Game Boost page. ready false = the temperature reader isn't set up; admin false = can't read. */
+export interface SensorReading {
+  ready: boolean;
+  admin: boolean;
+  cpu: number | null;
+  gpu: number | null;
+  /** Fan speeds (RPM). */
+  fans: Array<{ name: string; value: number }>;
+  /** Fan power (%), per controllable channel. */
+  power: Array<{ name: string; value: number }>;
+}
+
 export interface ToolStatus {
   /** Windows Performance Toolkit (xperf) installed: the latency check can name drivers. */
   wpt: boolean;
@@ -1023,6 +1035,10 @@ export interface OptimizerApi {
   focusIcons(): Promise<Record<string, string | null>>;
   /** Fan channels a Game Boost fan curve can control. ready false = the temperature reader isn't set up. */
   fanChannels(): Promise<{ ready: boolean; admin: boolean; channels: string[] }>;
+  /** Live temperatures and fan speeds; the reader runs while asked (stops 10 s after the last ask). */
+  sensorsNow(): Promise<SensorReading>;
+  /** Holds every controllable fan at pct (30-100) for 10 s, then gives them back to the BIOS. */
+  testFans(pct: number): Promise<ActionReport>;
   /** Turn Focus Mode on or off. */
   setFocus(on: boolean): Promise<ActionReport>;
   /** Everything in the Recycle Bin, newest deleted first. */

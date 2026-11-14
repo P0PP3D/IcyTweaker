@@ -4,8 +4,8 @@ import { createAnalyzer } from './cleaner/analyzer';
 import { createCleaner, driveHealth, type Env } from './cleaner/cleaner';
 import os from 'node:os';
 import path from 'node:path';
-import { spawn } from 'node:child_process';
-import type { Accent, LastScans, ProcessView, RecycleItem, AppSettings, CleanResult, DriverJobView, FrametimeResult, GameValues, InvokeApi, NetAdapterView, Progress, ServiceInfo, ServiceLevel, ServiceStartType, StartupItemView, DuplicateGroup, OldFile } from '../shared/types';
+import { spawn, type ChildProcess } from 'node:child_process';
+import type { Accent, SensorReading, LastScans, ProcessView, RecycleItem, AppSettings, CleanResult, DriverJobView, FrametimeResult, GameValues, InvokeApi, NetAdapterView, Progress, ServiceInfo, ServiceLevel, ServiceStartType, StartupItemView, DuplicateGroup, OldFile } from '../shared/types';
 import { POWERSHELL_EXE, SHUTDOWN_EXE, createSystemAdapter, isLiveEnv, liveAdapter, REG_EXE, runningProcesses, sz, type SettingRef } from './system/adapter';
 import { createProcessSampler, queryProcesses } from './system/processes';
 import { WPT_INSTALL_ARGS, XPERF, latencyCheck, traceDrivers } from './system/latency';
@@ -31,7 +31,7 @@ import { captureFrametimes, ensurePresentMon } from './resources/frametime';
 import { BIOS_GUIDES, GENERIC_GUIDE, auditBios, detectHardware } from './advanced/hardware';
 import { advancedTweaks, type MsiDevice } from './advanced/advanced';
 import { DEFAULT_BOOST, createBoost, optionsFor, parsePlans, validateBoost, type BoostSettings } from './games/boost';
-import { fanListScript, startFanControl, type FanControl } from './system/fans';
+import { FAN_MIN, fanListScript, fanTestScript, parseFanTest, sensorLoop, startFanControl, type FanControl } from './system/fans';
 import { createDebloater } from './system/debloat';
 import { fixes } from './tweaks/fixes';
 import { serviceTweaks } from './services/catalog';
@@ -325,7 +325,10 @@ app.whenReady().then(async () => {
     }
     // Start with Windows: the sign-in task holds the program's path, which changed with the rename (IcyCleaner.exe ->
     // IcyTweaker.exe) and can change with the install folder. Re-point it once when the path differs.
-    if (app.isPackaged && live && admin && settings.app.startWithWindows) {
+    // Only an installed copy (Program Files) owns the tasks: a test build run from release\win-unpacked must not
+    // re-point Start with Windows or the shortcuts at itself.
+    const installedCopy = app.isPackaged && process.execPath.toLowerCase().startsWith(`${(process.env.ProgramFiles ?? 'C:\\Program Files').toLowerCase()}\\`);
+    if (installedCopy && live && admin && settings.app.startWithWindows) {
       // The marker re-makes tasks from before 0.1.13 once, at normal priority (they ran the app below normal).
       const startCmd = `"${process.execPath}" --tray`;
       const startKey = `${startCmd} #p4`;
@@ -339,7 +342,7 @@ app.whenReady().then(async () => {
     // reopening from the desktop or Start menu while the app sits in the tray (or starting it at all) asks nothing.
     // Checked at every start: an update or reinstall puts the plain exe shortcuts back.
     // ponytail: one task for the PC's shortcuts, owned by the user who ran the app last; multi-user PCs would need per-user shortcuts.
-    if (app.isPackaged && live && admin)
+    if (installedCopy && live && admin)
       void (async () => {
         const user = currentUser();
         const openCmd = `${user}|${process.execPath}`;
@@ -379,6 +382,10 @@ app.whenReady().then(async () => {
     const boostGames = gameProfiles.map((g) => ({ id: g.id, name: g.name, exe: [...g.exe] }));
     // Fan curve during a session (system/fans.ts). Live + administrator only: dry-run never touches the fans.
     let fanCtl: FanControl | null = null;
+    let sensorProc: ChildProcess | null = null; // the Game Boost page's live reader (sensorsNow)
+    let sensorLast: Omit<SensorReading, 'ready' | 'admin'> | null = null;
+    let sensorAskedAt = 0;
+    app.on('will-quit', () => sensorProc?.kill());
     const lhmDir = path.join(app.getPath('userData'), 'tools', 'lhm-0.9.6');
     app.on('will-quit', () => fanCtl?.stop());
     const boost = createBoost(safety, boostGames, settings.boost, (e, game, id) => {
@@ -844,6 +851,66 @@ app.whenReady().then(async () => {
           return { ok: false, message: `Toolkit install failed: ${(err as Error).message}` };
         } finally {
           progress({ task: 'runtimes', done: 1, total: 1, current: '' });
+        }
+      },
+
+      /**
+       * Live readings for the Game Boost page. The reader (read-only PowerShell) starts on the first ask and stops 10 s
+       * after the last one, so it only runs while that page is open.
+       */
+      async sensorsNow(): Promise<SensorReading> {
+        const empty = { cpu: null, gpu: null, fans: [], power: [] };
+        if (!existsSync(path.join(lhmDir, 'LibreHardwareMonitorLib.dll'))) return { ready: false, admin, ...empty };
+        if (!admin) return { ready: true, admin, ...empty };
+        sensorAskedAt = Date.now();
+        if (!sensorProc) {
+          sensorProc = spawn(POWERSHELL_EXE, ['-NoProfile', '-NonInteractive', '-Command', sensorLoop(lhmDir)], { windowsHide: true });
+          let buf = '';
+          sensorProc.stdout?.on('data', (b: Buffer) => {
+            buf += b.toString();
+            const lines = buf.split(/\r?\n/);
+            buf = lines.pop()!;
+            for (const l of lines) {
+              try {
+                const j = JSON.parse(l) as { cpu?: unknown; gpu?: unknown; fans?: unknown; power?: unknown };
+                const num = (v: unknown) => (typeof v === 'number' && v > 0 ? v : null);
+                const list = (v: unknown) => (Array.isArray(v) ? v : v ? [v] : []).filter((x): x is { name: string; value: number } => typeof x?.name === 'string' && typeof x?.value === 'number');
+                sensorLast = { cpu: num(j.cpu), gpu: num(j.gpu), fans: list(j.fans), power: list(j.power) };
+              } catch {
+                // a partial line: the next one comes in 2 s
+              }
+            }
+          });
+          sensorProc.on('exit', () => (sensorProc = null));
+          const stopIdle = setInterval(() => {
+            if (Date.now() - sensorAskedAt > 10_000) {
+              clearInterval(stopIdle);
+              sensorProc?.kill();
+              sensorProc = null;
+              sensorLast = null;
+            }
+          }, 5000);
+        }
+        return { ready: true, admin, ...(sensorLast ?? empty) };
+      },
+
+      /** Fan test: every controllable fan at pct for 10 s, then back to the BIOS. Not during a fan-curve session. */
+      async testFans(pct: unknown) {
+        const p = typeof pct === 'number' ? Math.round(pct) : NaN;
+        if (!(p >= FAN_MIN && p <= 100)) return { ok: false, message: 'Invalid request.' };
+        if (!existsSync(path.join(lhmDir, 'LibreHardwareMonitorLib.dll'))) return { ok: false, message: 'Set up CPU temperature first: fan control uses the same reader.' };
+        if (live && !admin) return { ok: false, message: 'Testing fans needs IcyTweaker to run as administrator.' };
+        if (fanCtl) return { ok: false, message: 'A game\'s fan curve is running. Close the game first.' };
+        try {
+          const { stdout } = await adapter.exec(POWERSHELL_EXE, ['-NoProfile', '-NonInteractive', '-Command', fanTestScript(lhmDir, p, 10)], 60_000);
+          await safety.log('fan-test', `${p} %`, true, live ? undefined : 'dry-run: fans not changed');
+          if (!live) return { ok: true, message: `Dry-run: the fans would be held at ${p} % for 10 seconds.` };
+          if (/nofans/.test(stdout)) return { ok: false, message: 'No fans on this PC can be controlled by IcyTweaker. Nothing was changed.' };
+          const rows = parseFanTest(stdout).filter((r) => r.before || r.after);
+          const detail = rows.map((r) => `${r.name}: ${r.before ?? '?'} → ${r.after ?? '?'} RPM`).join(', ');
+          return { ok: true, message: `Fans held at ${p} % for 10 seconds, then given back to the BIOS.${detail ? ` ${detail}.` : ''}` };
+        } catch (err) {
+          return { ok: false, message: `Fan test failed: ${(err as Error).message}. The fans are back on BIOS control.` };
         }
       },
 

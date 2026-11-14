@@ -5,7 +5,7 @@ import { Icon, type IconName } from './icons';
 import { Button, formatBytes, useModal } from './ui';
 
 /** Pages the guide can open. */
-export type GuidePage = 'general' | 'presets' | 'health' | 'games' | 'focus' | 'restore' | 'startup' | 'devices';
+export type GuidePage = 'general' | 'presets' | 'health' | 'games' | 'boost' | 'focus' | 'restore' | 'startup' | 'devices';
 
 /** Opens the beginner guide from anywhere (Home, Settings). */
 export const openGuide = () => window.dispatchEvent(new Event('icy:guide'));
@@ -215,7 +215,8 @@ export function Onboarding({
           <Area icon="layers" title="Presets" text="One click applies a set of tweaks, with an estimated FPS gain for each." page="presets" />
           <Area icon="sliders" title="General tweaks" text="Every tweak as a card, so you can pick them one by one." page="general" />
           <Area icon="pulse" title="Health Check" text="Scans and cleans only safe junk (temp files, caches, crash reports)." page="health" />
-          <Area icon="gamepad" title="Game Profiles" text="Competitive settings for your games, Play buttons and Game Boost." page="games" />
+          <Area icon="gamepad" title="Game Profiles" text="Competitive settings for your games and Play buttons." page="games" />
+          <Area icon="sparkles" title="Game Boost" text="Power plan, fan curves, temperatures and the FPS overlay while you play." page="boost" />
           <Area icon="bolt" title="Focus Mode" text="Pauses background services and apps while you play, back with one click." page="focus" />
         </ul>
       ),

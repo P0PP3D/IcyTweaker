@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import clsx from 'clsx';
-import type { BoostOptions, BoostState, DisplayMode, FanPoint, FroststrapInfo, FrametimeResult, ToolStatus, GameFlag, GameStatus, GameValues, GameView, GameWinSettings, LibraryGame, SessionReport } from '../../shared/types';
-import { Badge, Button, MUTED_BADGE, Tabs, Toggle, type Ask } from '../ui';
+import type { BoostOptions, BoostState, DisplayMode, FanPoint, SensorReading, FroststrapInfo, FrametimeResult, ToolStatus, GameFlag, GameStatus, GameValues, GameView, GameWinSettings, LibraryGame, SessionReport } from '../../shared/types';
+import { Badge, Button, Loading, MUTED_BADGE, Toggle, type Ask } from '../ui';
 import type { Act } from './General';
 import deadlockArt from '../assets/games/deadlock.jpg';
 import dbdArt from '../assets/games/dead-by-daylight.jpg';
@@ -202,7 +202,10 @@ function GameBoost({ busy, act }: { busy: boolean; act: Act }) {
               <Badge className="bg-sky-500/15 text-sky-300 ring-sky-500/30">Watching</Badge>
             ) : null}
           </div>
-          <p className="text-sm text-slate-400">When a game from this list starts, apply the options below; undo them all when it closes. Each game can have its own. Works while IcyTweaker is open or in the tray.</p>
+          <p className="text-sm text-slate-400">
+            Turn this on and IcyTweaker watches for your games (it checks every 10 seconds). When one starts, it switches on the options below; when the game closes, everything goes back
+            exactly as it was. It keeps working while IcyTweaker is closed to the tray.
+          </p>
           {b.active && (
             <p className="text-xs text-emerald-300">
               {b.active.plan ? `Power plan: ${b.active.plan}. ` : ''}
@@ -213,6 +216,10 @@ function GameBoost({ busy, act }: { busy: boolean; act: Act }) {
         <Toggle on={s.enabled} label="Game Boost" disabled={busy} onChange={(v) => saveAll({ ...s, enabled: v })} />
       </div>
 
+      <p className="text-xs text-slate-500">
+        Pick "All games" to set the options every game uses, or pick one game and tick "Use its own settings" to give it different ones (for example a fan curve only for your most
+        demanding game).
+      </p>
       <div className="flex flex-wrap items-center gap-2 text-sm">
         <span className="text-slate-400">Options for</span>
         <select value={scope} onChange={(e) => setScope(e.target.value)} aria-label="Options for" className="rounded-md bg-white/5 px-2 py-1 text-slate-100 ring-1 ring-white/10">
@@ -233,51 +240,36 @@ function GameBoost({ busy, act }: { busy: boolean; act: Act }) {
       </div>
 
       <div className={clsx('space-y-2 text-sm text-slate-300', !editable && 'opacity-50')}>
-        <div className="flex flex-wrap gap-x-5 gap-y-1.5">
-          <label className="flex items-center gap-2">
-            <input type="checkbox" checked={o.plan} disabled={busy || !editable} onChange={(e) => edit({ plan: e.target.checked })} />
-            Power plan
-          </label>
-          <select
-            value={o.planGuid ?? ''}
-            disabled={busy || !editable || !o.plan}
-            onChange={(e) => edit({ planGuid: e.target.value || null })}
-            aria-label="Power plan during play"
-            className="-ml-3 rounded-md bg-white/5 px-2 py-0.5 text-sm text-slate-100 ring-1 ring-white/10 disabled:opacity-40"
+        <div className="grid gap-x-6 gap-y-3 md:grid-cols-2">
+          <BoostOption
+            label="Power plan"
+            text="Switches Windows to a high-performance power plan so the CPU doesn't slow down to save power. Your usual plan comes back after. Skipped on battery when the laptop profile is on."
           >
-            <option value="">Best performance plan (automatic)</option>
-            {plans.map((p) => (
-              <option key={p.guid} value={p.guid}>
-                {p.name}
-                {plans.filter((x) => x.name === p.name).length > 1 ? ` (${p.guid.slice(0, 8)})` : ''}
-                {p.active ? ' (current)' : ''}
-              </option>
-            ))}
-          </select>
-          <label className="flex items-center gap-2" title="Stops the Windows Update service during play and starts it again after. Needs administrator.">
-            <input type="checkbox" checked={o.pauseUpdates} disabled={busy || !editable} onChange={(e) => edit({ pauseUpdates: e.target.checked })} />
-            Pause Windows Update
-          </label>
-          <label className="flex items-center gap-2" title="Closes OneDrive during play (no syncing) and starts it again after.">
-            <input type="checkbox" checked={o.pauseOneDrive} disabled={busy || !editable} onChange={(e) => edit({ pauseOneDrive: e.target.checked })} />
-            Pause OneDrive
-          </label>
-          <label className="flex items-center gap-2" title="Every 30 s during play: when free memory is under 1 GB and standby memory over 1 GB, frees the standby list. Needs administrator.">
-            <input type="checkbox" checked={o.purgeStandby} disabled={busy || !editable} onChange={(e) => edit({ purgeStandby: e.target.checked })} />
-            Free standby memory when low
-          </label>
-          <label className="flex items-center gap-2" title="Turns notification banners off while the game runs and back on when it closes.">
-            <input type="checkbox" checked={!!o.quietNotifications} disabled={busy || !editable} onChange={(e) => edit({ quietNotifications: e.target.checked })} />
-            Do Not Disturb during play
-          </label>
-          <label className="flex items-center gap-2" title="Switches the main display to this mode while the game runs and back when it closes. Not saved: a sign-out also puts it back.">
-            Display
+            <input type="checkbox" checked={o.plan} disabled={busy || !editable} onChange={(e) => edit({ plan: e.target.checked })} aria-label="Power plan" />
+            <select
+              value={o.planGuid ?? ''}
+              disabled={busy || !editable || !o.plan}
+              onChange={(e) => edit({ planGuid: e.target.value || null })}
+              aria-label="Power plan during play"
+              className="min-w-0 flex-1 rounded-md bg-white/5 px-2 py-0.5 text-sm text-slate-100 ring-1 ring-white/10 disabled:opacity-40"
+            >
+              <option value="">Best performance plan (automatic)</option>
+              {plans.map((p) => (
+                <option key={p.guid} value={p.guid}>
+                  {p.name}
+                  {plans.filter((x) => x.name === p.name).length > 1 ? ` (${p.guid.slice(0, 8)})` : ''}
+                  {p.active ? ' (current)' : ''}
+                </option>
+              ))}
+            </select>
+          </BoostOption>
+          <BoostOption label="Display" text="Switches your main screen to this resolution and refresh rate while you play, and back after. Only modes your screen supports are listed.">
             <select
               value={o.display ? `${o.display.width}x${o.display.height}@${o.display.hz}` : ''}
               disabled={busy || !editable}
               onChange={(e) => edit({ display: modes.find((m) => `${m.width}x${m.height}@${m.hz}` === e.target.value) ?? null })}
               aria-label="Display mode during play"
-              className="rounded-md bg-white/5 px-2 py-0.5 text-sm text-slate-100 ring-1 ring-white/10 disabled:opacity-40"
+              className="min-w-0 flex-1 rounded-md bg-white/5 px-2 py-0.5 text-sm text-slate-100 ring-1 ring-white/10 disabled:opacity-40"
             >
               <option value="">Leave as is</option>
               {modes.map((m) => (
@@ -286,30 +278,48 @@ function GameBoost({ busy, act }: { busy: boolean; act: Act }) {
                 </option>
               ))}
             </select>
-          </label>
+          </BoostOption>
+          <BoostCheck label="Pause Windows Update" text="Stops Windows Update from downloading or installing mid-game. It starts again when you close the game. Needs administrator." checked={o.pauseUpdates} disabled={busy || !editable} onChange={(v) => edit({ pauseUpdates: v })} />
+          <BoostCheck label="Pause OneDrive" text="Closes OneDrive so it doesn't sync files while you play. It reopens when you close the game." checked={o.pauseOneDrive} disabled={busy || !editable} onChange={(v) => edit({ pauseOneDrive: v })} />
+          <BoostCheck
+            label="Free standby memory when low"
+            text="Every 30 seconds: if free memory drops under 1 GB, clears Windows' standby memory cache so the game has room. Needs administrator."
+            checked={o.purgeStandby}
+            disabled={busy || !editable}
+            onChange={(v) => edit({ purgeStandby: v })}
+          />
+          <BoostCheck label="Do Not Disturb" text="Hides notification pop-ups while you play. Your notification setting comes back when you close the game." checked={!!o.quietNotifications} disabled={busy || !editable} onChange={(v) => edit({ quietNotifications: v })} />
         </div>
-        <div className="flex flex-wrap gap-x-4 gap-y-1.5">
-          <span className="text-slate-500">Lower:</span>
-          {b.apps.map((a) => (
-            <label key={a.exe} className="flex items-center gap-1.5">
-              <input
-                type="checkbox"
-                checked={o.lowerApps.includes(a.exe)}
-                disabled={busy || !editable}
-                onChange={(e) => edit({ lowerApps: e.target.checked ? [...o.lowerApps, a.exe] : o.lowerApps.filter((x) => x !== a.exe) })}
-              />
-              {a.name}
-            </label>
-          ))}
+        <div>
+          <div className="text-slate-200">Lower these apps' priority</div>
+          <p className="mb-1.5 text-xs text-slate-500">They keep running, but Windows gives your game the CPU first. Their priority goes back to normal when you close the game.</p>
+          <div className="flex flex-wrap gap-x-4 gap-y-1.5">
+            {b.apps.map((a) => (
+              <label key={a.exe} className="flex items-center gap-1.5">
+                <input
+                  type="checkbox"
+                  checked={o.lowerApps.includes(a.exe)}
+                  disabled={busy || !editable}
+                  onChange={(e) => edit({ lowerApps: e.target.checked ? [...o.lowerApps, a.exe] : o.lowerApps.filter((x) => x !== a.exe) })}
+                />
+                {a.name}
+              </label>
+            ))}
+          </div>
         </div>
         <FanCurveEditor key={scope} curve={o.fanCurve ?? null} disabled={busy || !editable} act={act} onChange={(fanCurve) => edit({ fanCurve })} />
         {!editable && <p className="text-xs text-slate-500">This game uses the defaults. Tick "Use its own settings" to change them for it only.</p>}
       </div>
 
       <div className="flex flex-wrap items-center gap-2 border-t border-[var(--line)] pt-3 text-sm">
-        <span className="text-slate-300">In-game overlay</span>
-        <span className="text-xs text-slate-500">FPS, 1% low, GPU load and temperature over borderless or windowed games (needs administrator).</span>
-        <span className="ml-auto flex items-center gap-2">
+        <span className="min-w-0 flex-1">
+          <span className="block text-slate-200">In-game overlay</span>
+          <span className="block text-xs text-slate-500">
+            A small box in the corner of your game showing FPS, 1% low FPS (how bad the worst stutters are), GPU load and temperatures. It only shows over borderless or windowed
+            games (exclusive fullscreen draws over it) and needs administrator. Clicks pass through it.
+          </span>
+        </span>
+        <span className="flex items-center gap-2">
           <CpuTempSetup busy={busy} act={act} />
           {overlay.running ? (
             <Button disabled={busy} onClick={() => window.api.stopOverlay().then(() => setOverlay({ running: false, game: null }))}>
@@ -321,6 +331,166 @@ function GameBoost({ busy, act }: { busy: boolean; act: Act }) {
         </span>
       </div>
     </div>
+  );
+}
+
+/** Game Boost page: live temperatures and fans (with a fan test), then Game Boost and the overlay. */
+export function BoostPage({ busy, act }: { busy: boolean; act: Act }) {
+  return (
+    <section className="space-y-4">
+      <div>
+        <h2 className="text-xl font-semibold text-slate-100">Game Boost & overlay</h2>
+        <p className="text-sm text-slate-400">
+          Things IcyTweaker does only while you play: a faster power plan, quieter background apps, a fan curve and an FPS overlay. Nothing here changes your PC permanently; it's all
+          undone when the game closes.
+        </p>
+      </div>
+      <SensorPanel busy={busy} act={act} />
+      <GameBoost busy={busy} act={act} />
+    </section>
+  );
+}
+
+/**
+ * Live CPU / GPU temperature and fan speeds (read every 2 s while this panel is open; the reader stops 10 s after you
+ * leave), plus a fan test that needs no game.
+ */
+function SensorPanel({ busy, act }: { busy: boolean; act: Act }) {
+  const [r, setR] = useState<SensorReading | null>(null);
+  const [pct, setPct] = useState(70);
+  const [testing, setTesting] = useState(false);
+  useEffect(() => {
+    const read = () => !document.hidden && void window.api.sensorsNow().then(setR, () => {});
+    read();
+    const t = setInterval(read, 2000);
+    return () => clearInterval(t);
+  }, []);
+  const tone = (c: number | null) => (c === null ? 'text-slate-500' : c >= 85 ? 'text-rose-300' : c >= 75 ? 'text-amber-300' : 'text-emerald-300');
+  const Temp = ({ label, c }: { label: string; c: number | null }) => (
+    <div className="rounded-lg bg-white/[0.03] px-4 py-3 ring-1 ring-[var(--line)]">
+      <div className="text-xs text-slate-500">{label}</div>
+      <div className={clsx('text-2xl font-semibold tabular-nums', tone(c))}>{c === null ? '—' : `${c} °C`}</div>
+    </div>
+  );
+  const test = async () => {
+    setTesting(true);
+    try {
+      await act(() => window.api.testFans(pct));
+    } finally {
+      setTesting(false);
+    }
+  };
+
+  return (
+    <div className="space-y-3 rounded-xl bg-[var(--card)] p-4 ring-1 ring-[var(--line)]">
+      <div>
+        <div className="font-medium text-slate-100">Temperatures and fans</div>
+        <p className="text-sm text-slate-400">Live readings, updated every 2 seconds while this page is open. Green is fine, amber is warm, red is hot (85 °C or more).</p>
+      </div>
+      {!r ? (
+        <Loading text="Reading sensors…" />
+      ) : !r.ready ? (
+        <div className="flex flex-wrap items-center gap-2 text-sm text-slate-400">
+          Temperatures and fan control need a one-time setup (a sensor library and its driver). <CpuTempSetup busy={busy} act={act} />
+        </div>
+      ) : !r.admin ? (
+        <p className="text-sm text-amber-300">Sensors can only be read when IcyTweaker runs as administrator.</p>
+      ) : (
+        <>
+          <div className="grid gap-3 sm:grid-cols-2">
+            <Temp label="CPU" c={r.cpu} />
+            <Temp label="Graphics card" c={r.gpu} />
+          </div>
+          {r.fans.length || r.power.length ? (
+            <div className="grid gap-1.5 text-sm sm:grid-cols-2">
+              {r.fans.map((f) => (
+                <div key={`rpm-${f.name}`} className="flex justify-between rounded-md bg-white/[0.03] px-3 py-1.5 ring-1 ring-[var(--line)]">
+                  <span className="text-slate-300">{f.name}</span>
+                  <span className="tabular-nums text-slate-100">{f.value} RPM</span>
+                </div>
+              ))}
+              {r.power.map((f) => (
+                <div key={`pct-${f.name}`} className="flex justify-between rounded-md bg-white/[0.03] px-3 py-1.5 ring-1 ring-[var(--line)]">
+                  <span className="text-slate-300">{f.name} power</span>
+                  <span className="tabular-nums text-slate-100">{f.value} %</span>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <p className="text-xs text-slate-500">No fan readings on this PC (common on laptops).</p>
+          )}
+          <div className="flex flex-wrap items-center gap-3 border-t border-[var(--line)] pt-3 text-sm">
+            <span className="min-w-0 flex-1">
+              <span className="block text-slate-200">Test fan speed</span>
+              <span className="block text-xs text-slate-500">
+                Holds every fan IcyTweaker can control at this speed for 10 seconds, so you can hear and see (RPM above) what a curve setting does. Then the BIOS takes them back.
+              </span>
+            </span>
+            <input
+              type="range"
+              min={30}
+              max={100}
+              step={5}
+              value={pct}
+              disabled={busy || testing}
+              onChange={(e) => setPct(Number(e.target.value))}
+              aria-label="Test fan speed"
+              className="slider w-40"
+            />
+            <span className="w-12 text-right tabular-nums text-slate-200">{pct} %</span>
+            <Button disabled={busy || testing} onClick={() => void test()}>
+              {testing ? 'Testing…' : 'Test for 10 s'}
+            </Button>
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
+/** Performance page: Game Boost session reports, temperature history, frametime captures, sensitivity converter. */
+export function PerformancePage({ busy }: { busy: boolean }) {
+  const [games, setGames] = useState<GameView[]>([]);
+  useEffect(() => void window.api.listGames().then(setGames, () => {}), []);
+  return (
+    <section className="space-y-4">
+      <div>
+        <h2 className="text-xl font-semibold text-slate-100">Performance</h2>
+        <p className="text-sm text-slate-400">
+          How your games actually run: reports from Game Boost sessions (FPS before and after optimizing), temperatures over time, detailed frame-time captures and a sensitivity
+          converter.
+        </p>
+      </div>
+      <Sessions games={games} />
+      <TempHistorySection />
+      <Frametimes busy={busy} />
+      <SensConverter />
+    </section>
+  );
+}
+
+/** One Game Boost option: its controls, then what it does in plain words. */
+function BoostOption({ label, text, children }: { label: string; text: string; children: React.ReactNode }) {
+  return (
+    <div>
+      <div className="flex items-center gap-2">
+        <span className="shrink-0 text-slate-200">{label}</span>
+        {children}
+      </div>
+      <p className="mt-0.5 text-xs text-slate-500">{text}</p>
+    </div>
+  );
+}
+
+function BoostCheck({ label, text, checked, disabled, onChange }: { label: string; text: string; checked: boolean; disabled: boolean; onChange: (v: boolean) => void }) {
+  return (
+    <label className="block">
+      <span className="flex items-center gap-2 text-slate-200">
+        <input type="checkbox" checked={checked} disabled={disabled} onChange={(e) => onChange(e.target.checked)} />
+        {label}
+      </span>
+      <span className="mt-0.5 block text-xs text-slate-500">{text}</span>
+    </label>
   );
 }
 
@@ -1322,7 +1492,6 @@ export function Games({ busy, act, ask }: { busy: boolean; act: Act; ask: Ask })
   const [icons, setIcons] = useState<Record<string, string | null>>({});
   useEffect(() => void window.api.gameIcons().then(setIcons), []);
   useEffect(() => void load(), [load]);
-  const [tab, setTab] = useState<'profiles' | 'boost' | 'performance'>('profiles');
   const [launching, setLaunching] = useState<{ id: string; name: string; at: number; profile: boolean; phase: 'starting' | 'running' } | null>(null);
   // Running games: re-check every 4 s while one runs or is starting, so a closed game unlocks its profile by itself.
   const anyRunning = !!games?.some((g) => g.running);
@@ -1400,25 +1569,7 @@ export function Games({ busy, act, ask }: { busy: boolean; act: Act; ask: Ask })
           onClose={() => setLaunching(null)}
         />
       )}
-      <Tabs
-        tabs={[
-          { id: 'profiles', label: 'Profiles', icon: 'gamepad' },
-          { id: 'boost', label: 'Game Boost & overlay', icon: 'sparkles' },
-          { id: 'performance', label: 'Performance', icon: 'pulse' },
-        ]}
-        value={tab}
-        onChange={setTab}
-      />
-      {tab === 'boost' && <GameBoost busy={busy} act={act} />}
-      {tab === 'performance' && (
-        <>
-          <Sessions games={games ?? []} />
-          <TempHistorySection />
-          <Frametimes busy={busy} />
-          <SensConverter />
-        </>
-      )}
-      <div className={clsx('grid gap-4 md:grid-cols-[19rem_minmax(0,1fr)]', tab !== 'profiles' && 'hidden')}>
+      <div className="grid gap-4 md:grid-cols-[19rem_minmax(0,1fr)]">
         <div className="space-y-2">
           <div className="flex gap-2">
             <input

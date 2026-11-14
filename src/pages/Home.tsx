@@ -7,7 +7,7 @@ import { appliedCount } from './General';
 import { openGuide } from '../Onboarding';
 
 const gb = (bytes: number) => (bytes / 1024 ** 3).toFixed(1);
-type Go = (page: 'general' | 'health' | 'games' | 'apps' | 'resources') => void;
+type Go = (page: 'general' | 'health' | 'games' | 'boost' | 'apps' | 'resources') => void;
 
 const greeting = () => {
   const h = new Date().getHours();
@@ -53,10 +53,11 @@ export function Home({ state, go }: { state: AppState; go: Go }) {
         <Ring label="RAM" value={stats ? Math.round((100 * stats.ramUsed) / stats.ramTotal) : null} detail={stats ? `${gb(stats.ramUsed)} / ${gb(stats.ramTotal)} GB` : undefined} />
       </div>
 
-      <div className="grid gap-3 sm:grid-cols-3">
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
         <Action icon="sliders" title="Tweaks" text={`${applied} applied`} onClick={() => go('general')} />
         <Action icon="pulse" title="Health Check" text="Clean safe junk in one click" onClick={() => go('health')} />
-        <Action icon="gamepad" title="Game profiles" text="Competitive settings and Game Boost" onClick={() => go('games')} />
+        <Action icon="gamepad" title="Game profiles" text="Competitive settings for your games" onClick={() => go('games')} />
+        <Action icon="sparkles" title="Game Boost" text="Power plan, fans and overlay while you play" onClick={() => go('boost')} />
       </div>
 
       <Checkups go={go} />

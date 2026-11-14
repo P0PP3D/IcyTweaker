@@ -65,6 +65,39 @@ export const fanLoop = (dir: string) =>
   "if ($o -eq 'default') { Reset } else { $d = [float]$o; if ($d -ge " + FAN_MIN + ' -and $d -le 100) { foreach ($f in $fans) { $f.Control.SetSoftware($d) } } else { Reset } }; ' +
   'Start-Sleep 2 } } finally { Reset; $c.Close() }';
 
+/**
+ * Fan test (an exec: dry-run records it): every controllable fan held at `pct` for `seconds`, then back to the BIOS
+ * (finally, so also on errors). Prints "before|Name|rpm" lines, then "after|Name|rpm" lines.
+ */
+export const fanTestScript = (dir: string, pct: number, seconds: number) =>
+  `${libLoad(dir)}if (-not $fans.Count) { [Console]::Out.WriteLine('nofans'); $c.Close(); exit }; ` +
+  "function Rpm($tag) { foreach ($h in $hw) { $h.Update() }; $hw | ForEach-Object { $_.Sensors } | Where-Object { $_.SensorType -eq 'Fan' } | ForEach-Object { [Console]::Out.WriteLine(\"$tag|$($_.Name)|$([math]::Round($_.Value))\") } }; " +
+  `try { Rpm 'before'; foreach ($f in $fans) { $f.Control.SetSoftware(${Math.round(pct)}) }; Start-Sleep ${Math.round(seconds)}; Rpm 'after' } finally { foreach ($f in $fans) { $f.Control.SetDefault() }; $c.Close() }`;
+
+/** fanTestScript output -> per fan, its speed before and while held. */
+export function parseFanTest(out: string): Array<{ name: string; before: number | null; after: number | null }> {
+  const rows = new Map<string, { name: string; before: number | null; after: number | null }>();
+  for (const line of out.split(/\r?\n/)) {
+    const [tag, name, rpm] = line.trim().split('|');
+    if ((tag !== 'before' && tag !== 'after') || !name) continue;
+    const row = rows.get(name) ?? { name, before: null, after: null };
+    row[tag] = Number.isFinite(Number(rpm)) ? Number(rpm) : null;
+    rows.set(name, row);
+  }
+  return [...rows.values()];
+}
+
+/** Read-only reader for the Game Boost page: one JSON line every 2 s (CPU / GPU °C, fan RPM, fan power %). */
+export const sensorLoop = (dir: string) =>
+  `${libLoad(dir).replace('$c.IsControllerEnabled = $true;', '$c.IsControllerEnabled = $true; $c.IsGpuEnabled = $true;')}` +
+  'while ($true) { foreach ($h in $hw) { $h.Update() }; ' +
+  "$cpu = $null; foreach ($h in ($hw | Where-Object { \"$($_.HardwareType)\" -eq 'Cpu' })) { $t = $h.Sensors | Where-Object { $_.SensorType -eq 'Temperature' -and $_.Name -match 'Package|Tctl|Tdie' } | Select-Object -First 1; if (-not $t) { $t = $h.Sensors | Where-Object { $_.SensorType -eq 'Temperature' } | Sort-Object Value -Descending | Select-Object -First 1 }; if ($t -and $t.Value -gt 0) { $cpu = [math]::Round($t.Value) } }; " +
+  "$gpu = $null; foreach ($h in ($hw | Where-Object { \"$($_.HardwareType)\" -like 'Gpu*' })) { $t = $h.Sensors | Where-Object { $_.SensorType -eq 'Temperature' -and $_.Name -match 'Core' } | Select-Object -First 1; if ($t -and $t.Value -gt 0 -and -not $gpu) { $gpu = [math]::Round($t.Value) } }; " +
+  "$s = @($hw | ForEach-Object { $_.Sensors }); " +
+  "$fanRpm = @($s | Where-Object { $_.SensorType -eq 'Fan' -and $_.Value -ne $null } | ForEach-Object { @{ name = $_.Name; value = [math]::Round($_.Value) } }); " +
+  "$fanPct = @($s | Where-Object { $_.SensorType -eq 'Control' -and $_.Value -ne $null } | ForEach-Object { @{ name = $_.Name; value = [math]::Round($_.Value) } }); " +
+  "[Console]::Out.WriteLine((@{ cpu = $cpu; gpu = $gpu; fans = $fanRpm; power = $fanPct } | ConvertTo-Json -Compress -Depth 3)); Start-Sleep 2 }";
+
 export interface FanControl {
   stop(): void;
 }

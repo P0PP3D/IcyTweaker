@@ -61,7 +61,7 @@ export function Presets({ state, busy, act }: { state: AppState; busy: boolean; 
       </ul>
       <p className="text-xs text-slate-500">
         FPS figures are estimated ranges for these kinds of changes, not measurements of your PC: the real gain depends on your CPU, graphics card and game. To measure it, use
-        Frametime capture on the Game Profiles page (Performance tab) before and after applying a preset.
+        Frametime capture on the Performance page before and after applying a preset.
       </p>
     </section>
   );
